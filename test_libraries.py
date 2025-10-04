@@ -20,6 +20,7 @@ libraries = {
     'Tkinter': 'tkinter',  # Inclus avec Python, pas via pip
     'GDAL': 'osgeo.gdal',
     'Rasterio': 'rasterio',
+    'OpenIO' : 'openeo',
 }
 
 installed = []

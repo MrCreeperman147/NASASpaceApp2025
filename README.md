@@ -8,15 +8,48 @@ Ce projet utilise des technologies de traitement d'images et d'analyse géospati
 
 ## 🛠️ Technologies utilisées
 
-- **Python 3.12.10**
-- **GDAL 3.11.1** - Traitement de données raster géospatiales
-- **Rasterio 1.4.3** - Lecture/écriture de fichiers géospatiaux
-- **Xarray** - Manipulation de données multidimensionnelles
-- **NumPy** - Calculs numériques
-- **OpenCV** - Vision par ordinateur et traitement d'images
-- **scikit-image** - Algorithmes de traitement d'images
-- **Pillow** - Manipulation d'images
-- **Dask** - Calcul parallèle pour grandes données
+### Langages et environnement
+- **Python 3.12** - Langage principal du projet
+- **Virtual Environment** - Isolation des dépendances
+
+### Traitement géospatial et raster
+- **GDAL 3.11.1** - Bibliothèque de référence pour les données géospatiales
+- **Rasterio 1.4.3** - Interface Python pour GDAL, lecture/écriture de fichiers raster
+- **Shapely 2.1.2** - Manipulation d'objets géométriques
+- **PySTAC 1.14.1** - Catalogage de données spatiotemporelles
+
+### Traitement d'images et vision
+- **OpenCV 4.12.0** - Vision par ordinateur et traitement d'images avancé
+- **Scikit-image 0.25.2** - Algorithmes de traitement d'images scientifiques
+- **Pillow 11.3.0** - Manipulation d'images de base
+- **ImageIO 2.37.0** - Lecture/écriture de formats d'images multiples
+- **TIFFfile 2025.9.30** - Support avancé pour fichiers TIFF
+
+### Analyse de données scientifiques
+- **NumPy 2.3.3** - Calculs numériques et manipulation d'arrays
+- **Pandas 2.3.3** - Manipulation et analyse de données tabulaires
+- **SciPy 1.16.2** - Algorithmes scientifiques et statistiques
+- **Xarray 2025.1.1** - Manipulation de données multidimensionnelles étiquetées
+- **PyArrow 21.0.0** - Traitement de données colonnaires haute performance
+
+### Calcul parallèle et distribué
+- **Dask 2025.9.1** - Calcul parallèle pour datasets volumineux
+- **Distributed 2025.9.1** - Calcul distribué avec Dask
+
+### Visualisation et interfaces
+- **Matplotlib 3.10.6** - Création de graphiques et visualisations
+- **Bokeh 3.8.0** - Visualisations interactives web
+
+### Analyse de réseaux et connectivité
+- **NetworkX 3.5** - Création, manipulation et analyse de graphes
+- **Requests 2.32.5** - Client HTTP pour APIs
+- **OpenEO 0.45.0** - Interface pour traitement cloud de données Earth Observation
+
+### Utilitaires et support
+- **Click 8.3.0** - Interface en ligne de commande
+- **PyYAML 6.0.3** - Parsing de fichiers de configuration YAML
+- **Affine 2.4.0** - Transformations géométriques affines
+- **FSspec 2025.9.0** - Interface filesystem abstraite
 
 ## 🚀 Installation
 
