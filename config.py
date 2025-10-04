@@ -10,10 +10,14 @@ DATA_DIR = PROJECT_ROOT / "data"
 RAW_DATA_DIR = DATA_DIR / "raw"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 OUTPUT_DIR = DATA_DIR / "output"
+IMAGES_DIR = DATA_DIR / "images"
 
 # Créer les dossiers s'ils n'existent pas
 for directory in [DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR, OUTPUT_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
+
+# Formats d'images supportés
+SUPPORTED_IMAGE_FORMATS = ['.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif']
 
 # Paramètres de traitement d'images
 IMAGE_SETTINGS = {

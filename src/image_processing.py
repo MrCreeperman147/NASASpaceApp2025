@@ -1,12 +1,15 @@
 """
 Module de traitement d'images pour NASASpaceApp2025
 """
-
 import numpy as np
 from PIL import Image
 import cv2
 from skimage import filters, exposure, transform
 from pathlib import Path
+import sys
+
+# Add parent directory to path for config import
+sys.path.append(str(Path(__file__).parent.parent))
 import config
 
 class ImageProcessor:
@@ -29,10 +32,10 @@ class ImageProcessor:
         filepath = Path(filepath)
         
         if not filepath.exists():
-            raise FileNotFoundError(f"Fichier introuvable : {filepath}")
+            raise FileNotFoundError(f"Le fichier {filepath} n'existe pas")
         
         if filepath.suffix.lower() not in self.supported_formats:
-            raise ValueError(f"Format non supporté : {filepath.suffix}")
+            raise ValueError(f"Format non supporté: {filepath.suffix}")
         
         img = Image.open(filepath)
         
@@ -52,9 +55,17 @@ class ImageProcessor:
         filepath.parent.mkdir(parents=True, exist_ok=True)
         
         if isinstance(image, np.ndarray):
-            image = Image.fromarray(image.astype('uint8'))
+            # Convertir array NumPy en image PIL
+            if len(image.shape) == 2:
+                # Image en niveaux de gris
+                pil_image = Image.fromarray(image.astype('uint8'), mode='L')
+            else:
+                # Image couleur
+                pil_image = Image.fromarray(image.astype('uint8'))
+        else:
+            pil_image = image
         
-        image.save(filepath)
+        pil_image.save(filepath)
         print(f"✓ Image sauvegardée : {filepath}")
     
     def resize(self, image, size):
@@ -82,71 +93,46 @@ class ImageProcessor:
             Image filtrée
         """
         if filter_type == 'gaussian':
-            return filters.gaussian(image, sigma=1)
+            return filters.gaussian(image, sigma=1.0)
         elif filter_type == 'median':
             return filters.median(image)
         elif filter_type == 'sobel':
             return filters.sobel(image)
         else:
-            raise ValueError(f"Filtre inconnu : {filter_type}")
+            raise ValueError(f"Filtre non supporté: {filter_type}")
     
     def enhance_contrast(self, image):
-        """
-        Améliore le contraste de l'image
-        
-        Args:
-            image: Image (array NumPy)
-        
-        Returns:
-            Image avec contraste amélioré
-        """
+        """Améliore le contraste de l'image"""
         return exposure.equalize_adapthist(image)
     
     def detect_edges(self, image):
-        """
-        Détecte les contours dans l'image
-        
-        Args:
-            image: Image (array NumPy en niveaux de gris)
-        
-        Returns:
-            Image des contours
-        """
+        """Détecte les contours dans l'image"""
+        # Convertir en niveaux de gris si nécessaire
         if len(image.shape) == 3:
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = image
         
-        return cv2.Canny(image.astype('uint8'), 100, 200)
+        # Détection de contours avec Canny
+        edges = cv2.Canny(gray.astype('uint8'), 50, 150)
+        return edges
     
     def batch_process(self, input_dir, output_dir, operation):
-        """
-        Traite un lot d'images
-        
-        Args:
-            input_dir: Dossier d'entrée
-            output_dir: Dossier de sortie
-            operation: Fonction à appliquer sur chaque image
-        """
+        """Traitement par lot d'images"""
         input_dir = Path(input_dir)
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        image_files = []
-        for ext in self.supported_formats:
-            image_files.extend(input_dir.glob(f"*{ext}"))
-        
-        print(f"Traitement de {len(image_files)} images...")
-        
-        for i, filepath in enumerate(image_files, 1):
-            try:
-                img = self.load_image(filepath)
-                processed = operation(img)
-                output_path = output_dir / filepath.name
-                self.save_image(processed, output_path)
-                print(f"  [{i}/{len(image_files)}] {filepath.name}")
-            except Exception as e:
-                print(f"  ✗ Erreur avec {filepath.name}: {e}")
-        
-        print(f"✅ Traitement terminé : {len(image_files)} images")
+        for img_file in input_dir.glob("*"):
+            if img_file.suffix.lower() in self.supported_formats:
+                try:
+                    image = self.load_image(img_file)
+                    processed = operation(image)
+                    output_path = output_dir / img_file.name
+                    self.save_image(processed, output_path)
+                    print(f"✓ Traité: {img_file.name}")
+                except Exception as e:
+                    print(f"❌ Erreur avec {img_file.name}: {e}")
 
 
 def example_usage():
