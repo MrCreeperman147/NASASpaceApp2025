@@ -13,7 +13,7 @@ __pycache__/
 .ipynb_checkpoints
 
 # Données volumineuses (à adapter selon vos besoins)
-data/raw/*
+#data/raw/*
 *.tif
 *.shp
 
