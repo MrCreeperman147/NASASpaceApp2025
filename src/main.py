@@ -1,28 +1,28 @@
 """
 Point d'entrée principal - NASASpaceApp2025
-Interface graphique pour visualisation de carte du monde
+Carte du monde interactive avec Folium
 """
 
 import sys
 from pathlib import Path
-import tkinter as tk
 
-# Import de la GUI
-from src.gui import WorldMapGUI
+# Import de la GUI Folium
+from gui_folium import FoliumMapGUI
+import tkinter as tk
 
 
 def main():
-    """Point d'entrée principal avec interface graphique de carte"""
+    """Point d'entrée principal avec interface Folium"""
     print("=" * 70)
-    print("NASA SPACE APP 2025 - CARTE DU MONDE INTERACTIVE")
+    print("NASA SPACE APP 2025 - CARTE INTERACTIVE FOLIUM")
     print("=" * 70)
-    print("Lancement de l'interface de carte...")
+    print("Lancement de l'interface de carte Folium...")
     
     try:
         root = tk.Tk()
-        app = WorldMapGUI(root)
+        app = FoliumMapGUI(root)
         
-        print("✓ Interface de carte initialisée")
+        print("✓ Interface Folium initialisée")
         print("✓ Vous pouvez maintenant explorer la carte")
         print("=" * 70)
         
