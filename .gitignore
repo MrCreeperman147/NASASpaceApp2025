@@ -15,9 +15,43 @@ __pycache__/
 # Données volumineuses (à adapter selon vos besoins)
 #data/raw/*
 *.tif
+*.tiff
 *.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
 
 # IDE
 .vscode/
 .idea/
 *.swp
+
+# ============================================
+# CREDENTIALS - NE JAMAIS COMMITER
+# ============================================
+credentials.json
+token.pickle
+.env
+.env.local
+*.key
+*.pem
+
+# Fichiers temporaires de téléchargement
+quicklook_*.jpg
+sentinel2_*.zip
+*.vrt
+
+# Logs
+*.log
+logs/
+
+# Fichiers de cache
+.cache/
+*.cache
+
+# Fichiers macOS
+.DS_Store
+
+# Fichiers Windows
+Thumbs.db
