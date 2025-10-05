@@ -1,7 +1,7 @@
 """
 Interface graphique pour carte Folium interactive - NASASpaceApp2025
 Vue satellitaire centrée sur les Îles de la Madeleine
-Avec filtrage des données de marée
+Avec filtrage des données de marée et affichage des shapefiles
 """
 
 import tkinter as tk
@@ -15,10 +15,22 @@ from pathlib import Path
 import json
 from datetime import datetime
 import sys
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import threading
 
-# Importer le filtre de marée
+# Importer le filtre de marée et le pipeline
 sys.path.insert(0, str(Path(__file__).parent))
-from water_level_filter import WaterLevelFilter
+try:
+    from water_level_filter import WaterLevelFilter
+    from pipeline_processor import PipelineProcessor
+    PIPELINE_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  Warning: Pipeline non disponible - {e}")
+    WaterLevelFilter = None
+    PipelineProcessor = None
+    PIPELINE_AVAILABLE = False
 
 
 class FoliumMapGUI:
@@ -166,6 +178,34 @@ class FoliumMapGUI:
         ttk.Button(action_row, text="🗑️ Réinitialiser", 
                   command=self.reset_tide_filters).grid(row=0, column=2, padx=2)
         
+        # Section Pipeline de Traitement
+        pipeline_frame = ttk.LabelFrame(control_frame, text="🚀 Pipeline de Traitement Sentinel-2", padding="10")
+        pipeline_frame.grid(row=3, column=0, columnspan=6, sticky=(tk.W, tk.E), pady=(10, 0))
+        
+        # Bouton de lancement du pipeline
+        ttk.Button(pipeline_frame, text="🛰️ Lancer Pipeline Complet", 
+                  command=self.run_pipeline, 
+                  style='Accent.TButton').grid(row=0, column=0, padx=5, pady=5)
+        
+        ttk.Label(pipeline_frame, text="(Télécharge, traite et génère les shapefiles)", 
+                 foreground="gray").grid(row=0, column=1, padx=5)
+        
+        # Barre de progression
+        self.pipeline_progress_var = tk.DoubleVar()
+        self.pipeline_progress = ttk.Progressbar(
+            pipeline_frame, 
+            variable=self.pipeline_progress_var,
+            maximum=100,
+            mode='determinate',
+            length=300
+        )
+        self.pipeline_progress.grid(row=1, column=0, columnspan=2, pady=5, sticky=(tk.W, tk.E))
+        
+        self.pipeline_status_var = tk.StringVar(value="Prêt")
+        ttk.Label(pipeline_frame, textvariable=self.pipeline_status_var).grid(
+            row=2, column=0, columnspan=2, pady=2
+        )
+        
         # Style de carte - SUPPRIMÉ (sera dynamique sur la carte web)
         
         # Lieux prédéfinis - SUPPRIMÉ
@@ -223,6 +263,9 @@ class FoliumMapGUI:
             
             # Ajouter les marqueurs des lieux prédéfinis
             self.add_location_markers()
+            
+            # Ajouter les shapefiles
+            self.add_shapefiles_to_map()
             
             # Ajouter des plugins utiles
             self.add_map_plugins()
@@ -857,6 +900,202 @@ class FoliumMapGUI:
             self.max_level_var.set(f"{stats['max']:.2f}")
         
         self.update_info("🗑️ Filtres réinitialisés")
+    
+    def load_existing_shapefiles(self):
+        """Charge les shapefiles existants dans output/shapefiles"""
+        shapefile_dir = Path("output/shapefiles")
+        
+        if not shapefile_dir.exists():
+            return
+        
+        # Chercher tous les fichiers .shp
+        shapefiles = list(shapefile_dir.glob("surface_*.shp"))
+        
+        for shp_file in shapefiles:
+            # Extraire l'année du nom de fichier
+            try:
+                year_str = shp_file.stem.replace('surface_', '')
+                year = int(year_str)
+                
+                self.shapefiles[year] = {
+                    'path': str(shp_file),
+                    'layer': None
+                }
+                
+                self.update_info(f"📁 Shapefile trouvé: {year}")
+                
+            except ValueError:
+                continue
+    
+    def run_pipeline(self):
+        """Lance le pipeline complet de traitement"""
+        
+        
+        # Vérifier que le pipeline est disponible
+        if not PIPELINE_AVAILABLE or not self.PipelineProcessor:
+            messagebox.showerror(
+                "Pipeline Non Disponible",
+                "Le module pipeline_processor n'est pas disponible.\n\n"
+                "Vérifiez que le fichier src/pipeline_processor.py existe\n"
+                "et que toutes les dépendances sont installées."
+            )
+            return
+        
+        confirm = messagebox.askyesno(
+            "Lancer le Pipeline",
+            "Cette opération va:\n"
+            "• Télécharger les images depuis Google Drive\n"
+            "• Les traiter avec QGIS\n"
+            "• Générer les shapefiles\n\n"
+            "Cela peut prendre plusieurs heures.\n\n"
+            "Continuer?"
+        )
+        
+        if not confirm:
+            return
+        
+        # Désactiver le bouton pendant le traitement
+        self.update_info("🚀 Démarrage du pipeline...")
+        self.pipeline_status_var.set("Initialisation...")
+        self.pipeline_progress_var.set(0)
+        
+        try:
+            # Le processeur est déjà initialisé dans __init__
+            # Définir le callback de progression
+            def progress_callback(current, total, year):
+                progress = (current / total) * 100
+                self.pipeline_progress_var.set(progress)
+                self.pipeline_status_var.set(f"Traitement année {year} ({current}/{total})")
+                self.root.update_idletasks()
+            
+            # Lancer le traitement
+            results = self.PipelineProcessor.process_all_years(progress_callback)
+            
+            # Mettre à jour l'interface
+            self.pipeline_progress_var.set(100)
+            self.pipeline_status_var.set("Terminé!")
+            
+            # Recharger les shapefiles
+            self.load_existing_shapefiles()
+            
+            # Régénérer la carte avec les nouveaux shapefiles
+            self.create_folium_map()
+            
+            messagebox.showinfo(
+                "Pipeline Terminé",
+                f"Traitement terminé!\n\n"
+                f"Réussis: {len([r for r in results if r['status'] == 'success'])}\n"
+                f"Échecs: {len([r for r in results if r['status'] == 'failed'])}"
+            )
+            
+            self.update_info("✅ Pipeline terminé avec succès")
+            
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Erreur pendant le pipeline:\n{str(e)}")
+            self.update_info(f"❌ Erreur pipeline: {str(e)}")
+            self.pipeline_status_var.set("Erreur")
+    
+    def get_color_for_year(self, year, min_year, max_year):
+        """
+        Génère une couleur avec gradient pour une année
+        Plus ancien = moins visible (transparent)
+        Plus récent = plus visible (opaque)
+        """
+        if min_year == max_year:
+            return '#FF0000', 0.7
+        
+        # Normaliser l'année entre 0 et 1
+        normalized = (year - min_year) / (max_year - min_year)
+        
+        # Utiliser un gradient de couleur (bleu ancien -> rouge récent)
+        # Et augmenter l'opacité pour les années récentes
+        cmap = plt.cm.get_cmap('RdYlBu_r')  # Rouge = récent, Bleu = ancien
+        rgba = cmap(normalized)
+        
+        # Convertir en hex
+        hex_color = mcolors.rgb2hex(rgba[:3])
+        
+        # Opacité : 0.3 (ancien) à 0.9 (récent)
+        opacity = 0.3 + (normalized * 0.6)
+        
+        return hex_color, opacity
+    
+    def add_shapefiles_to_map(self):
+        """Ajoute tous les shapefiles à la carte avec gradient de couleur"""
+        if not self.shapefiles:
+            return
+        
+        years = sorted(self.shapefiles.keys())
+        min_year = min(years)
+        max_year = max(years)
+        
+        print(f"\n📊 Ajout des shapefiles ({len(years)} années)")
+        print(f"   Gradient: {min_year} (ancien/transparent) → {max_year} (récent/opaque)")
+        
+        for year in years:
+            shp_info = self.shapefiles[year]
+            shp_path = Path(shp_info['path'])
+            
+            if not shp_path.exists():
+                continue
+            
+            try:
+                # Lire le shapefile
+                gdf = gpd.read_file(shp_path)
+                
+                if gdf.empty:
+                    continue
+                
+                # Obtenir la couleur et l'opacité
+                color, opacity = self.get_color_for_year(year, min_year, max_year)
+                
+                # Créer un FeatureGroup pour cette année
+                fg = folium.FeatureGroup(name=f"📅 {year}", show=False)
+                
+                # Ajouter chaque polygone
+                for idx, row in gdf.iterrows():
+                    # Info popup
+                    area_km2 = row.get('area_km2', 0)
+                    area_m2 = row.get('area_m2', 0)
+                    
+                    popup_html = f"""
+                    <div style='width: 200px; font-family: Arial;'>
+                        <h4 style='margin: 0 0 10px 0; color: #2c3e50;'>
+                            📅 Année {year}
+                        </h4>
+                        <hr style='margin: 10px 0;'>
+                        <p style='margin: 5px 0;'>
+                            <b>📐 Surface:</b><br>
+                            {area_km2:.4f} km²<br>
+                            {area_m2:.0f} m²
+                        </p>
+                    </div>
+                    """
+                    
+                    # Ajouter le polygone
+                    folium.GeoJson(
+                        row.geometry,
+                        style_function=lambda x, c=color, o=opacity: {
+                            'fillColor': c,
+                            'color': c,
+                            'weight': 2,
+                            'fillOpacity': o,
+                            'opacity': 1.0
+                        },
+                        popup=folium.Popup(popup_html, max_width=250)
+                    ).add_to(fg)
+                
+                # Ajouter le FeatureGroup à la carte
+                fg.add_to(self.map_object)
+                
+                # Sauvegarder la référence
+                shp_info['layer'] = fg
+                
+                print(f"   ✅ {year}: {len(gdf)} polygone(s) - Couleur: {color}, Opacité: {opacity:.2f}")
+                
+            except Exception as e:
+                print(f"   ❌ Erreur pour {year}: {e}")
+                continue
     
     def update_info(self, message):
         """Met à jour le texte d'information"""
