@@ -1,178 +1,178 @@
-# ⚡ Guide de Démarrage Rapide
+# ⚡ Quick Start Guide
 
 **NASA Space Apps Challenge 2025 - Interactive World Map**
 
 ---
 
-## 🚀 Installation en 3 Minutes
+## 🚀 Installation in 3 Minutes
 
-### Option A : Installation Automatique (Recommandé)
+### Option A: Automated Installation (Recommended)
 
 ```bash
-# 1. Cloner le projet
-git clone https://github.com/votre-username/NASASpaceApp2025.git
+# 1. Clone the project
+git clone https://github.com/your-username/NASASpaceApp2025.git
 cd NASASpaceApp2025
 
-# 2. Rendre le script exécutable
+# 2. Make script executable
 chmod +x setup.sh
 
-# 3. Lancer l'installation
+# 3. Run installation
 ./setup.sh
 ```
 
-Le script va :
-- ✅ Vérifier Python et pip
-- ✅ Installer les dépendances
-- ✅ Créer credentials.json
-- ✅ Configurer .gitignore
-- ✅ Tester la configuration
+The script will:
+- ✅ Check Python and pip
+- ✅ Install dependencies
+- ✅ Create credentials.json
+- ✅ Configure .gitignore
+- ✅ Test configuration
 
 ---
 
-### Option B : Installation Manuelle
+### Option B: Manual Installation
 
 ```bash
-# 1. Cloner et installer
-git clone https://github.com/votre-username/NASASpaceApp2025.git
+# 1. Clone and install
+git clone https://github.com/your-username/NASASpaceApp2025.git
 cd NASASpaceApp2025
 pip install -r requirements.txt
 
-# 2. Configurer les credentials
+# 2. Configure credentials
 cp credentials.json.example credentials.json
-nano credentials.json  # Éditer avec vos identifiants
+nano credentials.json  # Edit with your credentials
 
-# 3. Vérifier la configuration
+# 3. Verify configuration
 python check_credentials.py
 ```
 
 ---
 
-## 🔑 Configuration des Credentials
+## 🔑 Credentials Configuration
 
-### Étape 1 : Compte Copernicus (Obligatoire)
+### Step 1: Copernicus Account (Required)
 
-1. **Créer un compte** : https://dataspace.copernicus.eu/
-2. **Activer le compte** : Vérifier votre email
-3. **Éditer `credentials.json`** :
+1. **Create account**: https://dataspace.copernicus.eu/
+2. **Activate account**: Check your email
+3. **Edit `credentials.json`**:
 
 ```json
 {
   "copernicus": {
-    "username": "votre_email@example.com",
-    "password": "votre_mot_de_passe"
+    "username": "your_email@example.com",
+    "password": "your_password"
   }
 }
 ```
 
-### Étape 2 : Google Drive (Optionnel)
+### Step 2: Google Drive (Optional)
 
-Seulement si vous voulez utiliser l'upload automatique vers Drive.
+Only if you want automated Drive upload.
 
-1. **Console Google Cloud** : https://console.cloud.google.com/
-2. **Créer un projet** et activer l'API Drive
-3. **Créer credentials OAuth 2.0** (type: Desktop app)
-4. **Télécharger le JSON** et copier dans `credentials.json`
+1. **Google Cloud Console**: https://console.cloud.google.com/
+2. **Create project** and enable Drive API
+3. **Create OAuth 2.0 credentials** (type: Desktop app)
+4. **Download JSON** and copy to `credentials.json`
 
-Voir [SECURITY.md](SECURITY.md) pour le guide détaillé.
+See [SECURITY.md](SECURITY.md) for detailed guide.
 
 ---
 
-## ✅ Vérifier la Configuration
+## ✅ Verify Configuration
 
 ```bash
-# Lancer le script de vérification
+# Run verification script
 python check_credentials.py
 ```
 
-**Résultat attendu :**
+**Expected result:**
 ```
-✅ Toutes les vérifications sont passées (6/6)
-🚀 Vous pouvez utiliser le projet en toute sécurité!
+✅ All checks passed (6/6)
+🚀 You can use the project safely!
 ```
 
-**Si des erreurs apparaissent :**
-- ❌ Credentials manquants → Éditer `credentials.json`
-- ❌ Tracké par Git → Exécuter `git rm --cached credentials.json`
-- ❌ Connexion API échouée → Vérifier username/password
+**If errors appear:**
+- ❌ Missing credentials → Edit `credentials.json`
+- ❌ Tracked by Git → Run `git rm --cached credentials.json`
+- ❌ API connection failed → Check username/password
 
 ---
 
-## 🎯 Utilisation Rapide
+## 🎯 Quick Usage
 
-### 1. Interface Cartographique
+### 1. Interactive Map Interface
 
 ```bash
 python src/main.py
 ```
 
-**Fonctionnalités :**
-- 🗺️ Carte interactive Folium
-- 📍 Marqueurs personnalisés
-- 🌐 Ouverture dans le navigateur
-- 💾 Export HTML
+**Features:**
+- 🗺️ Interactive Folium map
+- 📍 Custom markers
+- 🌐 Opens in browser
+- 💾 HTML export
 
-### 2. Télécharger des Images Sentinel-2
+### 2. Download Sentinel-2 Images
 
 ```bash
-# Éditer les paramètres dans sentinelAPI.py (ligne ~1100)
+# Edit parameters in sentinelAPI.py (line ~1100)
 python src/api/sentinelAPI.py
 ```
 
-**Configuration :**
+**Configuration:**
 ```python
-csv_file = "marees.csv"           # Fichier de marées
-max_cloud_cover = 20              # % nuages max
-time_window_hours = 1             # Fenêtre temporelle
-filter_tile_pair = ['T20TNT', 'T20TPT']  # Tuiles requises
+csv_file = "marees.csv"           # Tidal data file
+max_cloud_cover = 20              # Max cloud %
+time_window_hours = 1             # Time window
+filter_tile_pair = ['T20TNT', 'T20TPT']  # Required tiles
 ```
 
-### 3. Filtrer les Données de Marée
+### 3. Filter Tidal Data
 
 ```python
 from src.water_level_filter import WaterLevelFilter
 
-# Charger le CSV
+# Load CSV
 filter_obj = WaterLevelFilter("marees.csv")
 filter_obj.load_csv_data()
 
-# Filtrer par niveau (marée haute > 1.5m)
+# Filter by level (high tide > 1.5m)
 high_tide = filter_obj.filter_by_level_range(1.5, 2.5)
 
 # Export
 filter_obj.export_filtered_data(high_tide, "high_tide.csv")
 ```
 
-### 4. Calculer des Surfaces (NDVI)
+### 4. Calculate Surfaces (NDVI)
 
 ```bash
-# 1. Préparer les mosaïques
+# 1. Prepare mosaics
 python src/qgis/traitement_qgis.py
 
-# 2. Calculer les surfaces
+# 2. Calculate surfaces
 python src/qgis/code_de_surface.py
 ```
 
 ---
 
-## 📊 Exemples de Workflows
+## 📊 Example Workflows
 
-### Workflow 1 : Analyse d'Érosion Côtière
+### Workflow 1: Coastal Erosion Analysis
 
 ```bash
-# 1. Télécharger images aux marées extrêmes
+# 1. Download images at extreme tides
 python src/api/sentinelAPI.py
 
-# 2. Créer les mosaïques
+# 2. Create mosaics
 python src/qgis/traitement_qgis.py
 
-# 3. Calculer les surfaces émergées
+# 3. Calculate emerged surfaces
 python src/qgis/code_de_surface.py
 
-# 4. Visualiser sur la carte
+# 4. Visualize on map
 python src/main.py
 ```
 
-### Workflow 2 : Sélection d'Images pour Étude
+### Workflow 2: Image Selection for Study
 
 ```python
 from src.api.sentinelAPI import (
@@ -182,12 +182,12 @@ from src.api.sentinelAPI import (
     download_best_pairs
 )
 
-# Charger credentials
+# Load credentials
 creds = load_credentials()
 username = creds['copernicus']['username']
 password = creds['copernicus']['password']
 
-# Rechercher images
+# Search images
 products = search_sentinel2_from_csv_dates(
     username, password,
     csv_file_path="marees.csv",
@@ -195,14 +195,14 @@ products = search_sentinel2_from_csv_dates(
     filter_tile_pair=['T20TNT', 'T20TPT']
 )
 
-# Sélectionner les meilleures par année
+# Select best pairs per year
 best_pairs = select_best_pairs_per_year(products)
 
-# Télécharger uniquement les quicklooks
+# Download quicklooks only
 download_best_pairs(best_pairs, username, password, 'quicklook')
 ```
 
-### Workflow 3 : Upload Automatique vers Drive
+### Workflow 3: Automated Drive Upload
 
 ```python
 from src.api.sentinelAPI import (
@@ -212,77 +212,77 @@ from src.api.sentinelAPI import (
     upload_best_pairs_to_drive
 )
 
-# Configuration et recherche
+# Configuration and search
 creds = load_credentials()
 products = search_sentinel2_from_csv_dates(...)
 best_pairs = select_best_pairs_per_year(products)
 
-# Upload direct vers Google Drive
+# Direct upload to Google Drive
 upload_best_pairs_to_drive(
     best_pairs, 
     username, 
     password,
-    base_folder_name='Sentinel2_IlesMadeleine'
+    base_folder_name='Sentinel2_MagdalenIslands'
 )
 ```
 
 ---
 
-## 🔧 Paramètres Importants
+## 🔧 Important Parameters
 
 ### sentinelAPI.py
 
 ```python
-# Recherche d'images
+# Image search
 max_cloud_cover = 20              # 0-100%
-time_window_hours = 2             # Fenêtre marée ±heures
-max_tide_time_diff = 60           # Différence max (minutes)
+time_window_hours = 2             # Tide window ±hours
+max_tide_time_diff = 60           # Max difference (minutes)
 
-# Filtrage
-filter_tile_pair = ['T20TNT', 'T20TPT']  # Tuiles requises ensemble
+# Filtering
+filter_tile_pair = ['T20TNT', 'T20TPT']  # Required tiles together
 ```
 
 ### code_de_surface.py
 
 ```python
-# Seuil NDVI (eau/terre)
-threshold_value = 0.05            # ⬇️ = plus de sable
-mean_min = 0.02                   # Filtre anti-eau (NDVI moyen)
+# NDVI threshold (water/land)
+threshold_value = 0.05            # ⬇️ = more sand
+mean_min = 0.02                   # Anti-water filter (mean NDVI)
 
-# Nettoyage
-min_object_pixels = 150           # Taille min objets (pixels)
-min_area_m2 = 3000                # Taille min polygones finaux (m²)
+# Cleanup
+min_object_pixels = 150           # Min object size (pixels)
+min_area_m2 = 3000                # Min final polygon size (m²)
 
 # CRS
-TARGET_EPSG = 32198               # MTM-8/NAD83 (Îles Madeleine)
+TARGET_EPSG = 32198               # MTM-8/NAD83 (Magdalen Islands)
 ```
 
 ---
 
-## 🆘 Dépannage Rapide
+## 🆘 Quick Troubleshooting
 
-### ❌ "Erreur d'authentification Copernicus"
+### ❌ "Copernicus authentication error"
 
 ```bash
-# Vérifier les credentials
+# Check credentials
 cat credentials.json | grep copernicus -A 3
 
-# Tester manuellement
+# Test manually
 python check_credentials.py
 ```
 
-**Solutions :**
-- Vérifier username/password
-- Vérifier que le compte est activé
-- Essayer de se connecter sur le site
+**Solutions:**
+- Verify username/password
+- Ensure account is activated
+- Try logging in on website
 
 ### ❌ "credentials.json not found"
 
 ```bash
-# Vérifier l'existence
+# Check existence
 ls -la credentials.json
 
-# Créer depuis le template
+# Create from template
 cp credentials.json.example credentials.json
 nano credentials.json
 ```
@@ -290,10 +290,10 @@ nano credentials.json
 ### ❌ "Module not found"
 
 ```bash
-# Réinstaller les dépendances
+# Reinstall dependencies
 pip install -r requirements.txt --upgrade
 
-# Vérifier l'installation
+# Check installation
 pip list | grep rasterio
 pip list | grep geopandas
 ```
@@ -301,21 +301,21 @@ pip list | grep geopandas
 ### ❌ "GDAL/PROJ errors"
 
 ```bash
-# Avec conda (recommandé)
+# With conda (recommended)
 conda install -c conda-forge gdal rasterio geopandas
 
-# Vérifier les chemins
+# Verify paths
 python -c "import rasterio; print(rasterio.__version__)"
 ```
 
 ### ❌ "Git tracking credentials.json"
 
 ```bash
-# Retirer du tracking
+# Remove from tracking
 git rm --cached credentials.json
 git commit -m "Remove credentials from tracking"
 
-# Vérifier
+# Verify
 git status | grep credentials
 ```
 
@@ -323,46 +323,47 @@ git status | grep credentials
 
 ## 📚 Documentation
 
-| Fichier | Description |
-|---------|-------------|
-| [README.md](README.md) | Documentation complète du projet |
-| [SECURITY.md](SECURITY.md) | Guide de sécurité détaillé |
-| [check_credentials.py](check_credentials.py) | Script de vérification |
-| [setup.sh](setup.sh) | Script d'installation automatique |
+| File | Description |
+|------|-------------|
+| [README.md](README.md) | Complete project documentation |
+| [SECURITY.md](SECURITY.md) | Detailed security guide |
+| [TIDE_FILTERING_GUIDE.md](TIDE_FILTERING_GUIDE.md) | Tidal filtering documentation |
+| [check_credentials.py](check_credentials.py) | Verification script |
+| [setup.sh](setup.sh) | Automated installation script |
 
 ---
 
-## 🔒 Checklist Sécurité
+## 🔒 Security Checklist
 
-Avant de commiter :
+Before committing:
 
 - [ ] `python check_credentials.py` → ✅ OK
 - [ ] `git status` → credentials.json **absent**
-- [ ] Pas de credentials en dur dans le code
-- [ ] .gitignore à jour
+- [ ] No hardcoded credentials in code
+- [ ] .gitignore up to date
 
 ---
 
-## 📞 Aide
+## 📞 Help
 
-**Questions ?** Ouvrir une [Issue GitHub](https://github.com/votre-username/NASASpaceApp2025/issues)
+**Questions?** Open a [GitHub Issue](https://github.com/your-username/NASASpaceApp2025/issues)
 
-**Problème de sécurité ?** Contacter en privé (pas d'issue publique)
+**Security issue?** Contact privately (no public issue)
 
 ---
 
-## 🎉 Prêt !
+## 🎉 Ready!
 
-Vous êtes maintenant prêt à utiliser le projet !
+You're now ready to use the project!
 
 ```bash
-# Lancer l'interface
+# Launch interface
 python src/main.py
 
-# Bon exploration ! 🚀
+# Happy exploring! 🚀
 ```
 
 ---
 
-**Dernière mise à jour** : Octobre 2025  
-**Version** : 1.0.0
+**Last Updated**: October 2025  
+**Version**: 1.0.0
