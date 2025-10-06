@@ -21,6 +21,7 @@ __pycache__/
 *.dbf
 *.prj
 *.cpg
+*.qmd
 
 # IDE
 .vscode/

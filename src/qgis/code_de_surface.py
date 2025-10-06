@@ -3,19 +3,46 @@
 
 """
 Calcul de surface terrestre à partir des bandes NDVI
-Version adaptée pour le pipeline automatique
+Version adaptée pour le pipeline automatique avec gestion CRS robuste
 """
 
 import os, sys, warnings
 from pathlib import Path
 
-# Patch PROJ
-os.environ.setdefault("PROJ_DATA", os.path.join(sys.prefix, "share", "proj"))
-try:
-    from pyproj import datadir
-    datadir.set_data_dir(os.environ["PROJ_DATA"])
-except Exception:
-    pass
+# Patch PROJ - Version robuste avec détection automatique
+def setup_proj_data():
+    """Configure PROJ_DATA en cherchant proj.db"""
+    if "PROJ_DATA" in os.environ and Path(os.environ["PROJ_DATA"]).exists():
+        return  # Déjà configuré
+    
+    # Chercher proj.db récursivement dans le venv
+    for db_path in Path(sys.prefix).rglob("proj.db"):
+        if db_path.is_file():
+            os.environ["PROJ_DATA"] = str(db_path.parent)
+            break
+    else:
+        # Fallback sur des chemins typiques
+        candidates = [
+            Path(sys.prefix) / "share" / "proj",
+            Path(sys.prefix) / "Library" / "share" / "proj",
+            Path(sys.prefix) / "Lib" / "site-packages" / "fiona" / "proj_data",
+        ]
+        
+        for candidate in candidates:
+            if (candidate / "proj.db").exists():
+                os.environ["PROJ_DATA"] = str(candidate)
+                break
+        else:
+            os.environ.setdefault("PROJ_DATA", os.path.join(sys.prefix, "share", "proj"))
+    
+    # Configurer pyproj
+    try:
+        from pyproj import datadir
+        datadir.set_data_dir(os.environ["PROJ_DATA"])
+    except Exception:
+        pass
+
+setup_proj_data()
 warnings.filterwarnings("ignore", category=UserWarning, module="pyproj")
 
 import numpy as np
@@ -26,6 +53,7 @@ import rasterio
 from rasterio.features import shapes, rasterize
 from rasterio.enums import Resampling
 from rasterio.crs import CRS as RioCRS
+from rasterio.warp import calculate_default_transform, reproject as rio_reproject
 
 from skimage.filters import threshold_otsu
 from skimage.morphology import binary_opening, binary_closing, disk
@@ -54,32 +82,118 @@ DEFAULT_CONFIG = {
 
 
 def read_band(path):
-    """Lit une bande raster"""
+    """Lit une bande raster avec gestion robuste du CRS"""
     with rasterio.open(path) as src:
         arr = src.read(1).astype("float32")
-        tr, crs = src.transform, src.crs
+        tr = src.transform
+        crs = src.crs
         w, h = src.width, src.height
         nod = src.nodata
+        
+        # Gérer les valeurs nodata
         if nod is not None:
             arr = np.where(arr == nod, np.nan, arr)
         arr[~np.isfinite(arr)] = np.nan
+        
+        # Vérifier et corriger le CRS si manquant
+        if crs is None:
+            print("   ⚠️  CRS manquant, tentative de définition par défaut...")
+            # Essayer plusieurs méthodes
+            try:
+                # Méthode 1: WKT pour UTM Zone 20N
+                crs = RioCRS.from_string(
+                    'PROJCS["WGS 84 / UTM zone 20N",'
+                    'GEOGCS["WGS 84",'
+                    'DATUM["WGS_1984",'
+                    'SPHEROID["WGS 84",6378137,298.257223563]],'
+                    'PRIMEM["Greenwich",0],'
+                    'UNIT["degree",0.0174532925199433]],'
+                    'PROJECTION["Transverse_Mercator"],'
+                    'PARAMETER["latitude_of_origin",0],'
+                    'PARAMETER["central_meridian",-63],'
+                    'PARAMETER["scale_factor",0.9996],'
+                    'PARAMETER["false_easting",500000],'
+                    'PARAMETER["false_northing",0],'
+                    'UNIT["metre",1]]'
+                )
+                print("   ✅ CRS défini via WKT (UTM Zone 20N)")
+            except Exception as e1:
+                try:
+                    # Méthode 2: Proj4 string
+                    crs = RioCRS.from_proj4(
+                        '+proj=utm +zone=20 +datum=WGS84 +units=m +no_defs'
+                    )
+                    print("   ✅ CRS défini via PROJ4 (UTM Zone 20N)")
+                except Exception as e2:
+                    # Méthode 3: Fallback simple
+                    print(f"   ⚠️  Impossible de créer CRS (WKT: {e1}, PROJ4: {e2})")
+                    print("   ⚠️  Utilisation CRS None - risque d'erreurs!")
+                    crs = None
+        
         return arr, tr, crs, w, h
 
 
 def reproject_match(src_path, dst_transform, dst_crs, dst_w, dst_h, resampling):
-    """Reprojette une bande pour correspondre à une autre"""
+    """Reprojette une bande pour correspondre à une autre avec gestion CRS robuste"""
     with rasterio.open(src_path) as src:
+        src_crs = src.crs
+        
+        # Si le CRS source est manquant, utiliser le CRS destination
+        if src_crs is None:
+            print(f"   ⚠️  CRS source manquant pour {Path(src_path).name}, utilisation du CRS cible")
+            src_crs = dst_crs
+        
+        # Si les CRS sont identiques et les dimensions correspondent, pas besoin de reprojection
+        if (src_crs == dst_crs and 
+            src.transform == dst_transform and 
+            src.width == dst_w and 
+            src.height == dst_h):
+            print(f"   ✅ Pas de reprojection nécessaire pour {Path(src_path).name}")
+            return src.read(1).astype("float32")
+        
+        # Créer l'array de destination
         dst = np.empty((dst_h, dst_w), dtype="float32")
-        rasterio.warp.reproject(
-            source=src.read(1).astype("float32"),
-            destination=dst,
-            src_transform=src.transform,
-            src_crs=src.crs,
-            dst_transform=dst_transform,
-            dst_crs=dst_crs,
-            resampling=resampling
-        )
+        
+        try:
+            # Reprojection
+            rio_reproject(
+                source=src.read(1).astype("float32"),
+                destination=dst,
+                src_transform=src.transform,
+                src_crs=src_crs,
+                dst_transform=dst_transform,
+                dst_crs=dst_crs,
+                resampling=resampling
+            )
+        except Exception as e:
+            print(f"   ⚠️  Erreur reprojection: {e}")
+            print(f"      Tentative avec dimensions identiques...")
+            # Fallback: juste lire les données si même dimension
+            if src.width == dst_w and src.height == dst_h:
+                dst = src.read(1).astype("float32")
+            else:
+                raise
+        
         return dst
+
+
+def ensure_same_shape(red, nir, red_path, nir_path):
+    """S'assure que les deux bandes ont la même forme"""
+    if red.shape != nir.shape:
+        print(f"   ⚠️  Dimensions différentes:")
+        print(f"      RED: {red.shape}")
+        print(f"      NIR: {nir.shape}")
+        print(f"   🔧 Redimensionnement de NIR pour correspondre à RED...")
+        
+        # Utiliser scipy pour redimensionner
+        from scipy.ndimage import zoom
+        
+        zoom_factors = (red.shape[0] / nir.shape[0], red.shape[1] / nir.shape[1])
+        nir = zoom(nir, zoom_factors, order=1)  # bilinear
+        
+        print(f"      ✅ NIR redimensionné: {nir.shape}")
+    
+    return red, nir
 
 
 def compute_ndvi(nir, red):
@@ -240,16 +354,29 @@ def process_ndvi(band_red, band_nir, output_dir, output_name, config=None):
     # Charger les bandes
     print(f"\n📊 Chargement des données...")
     red, tr, crs, w, h = read_band(band_red)
+    print(f"   RED chargé: {w}x{h}, CRS: {crs}")
+    
+    # Reprojection de NIR pour correspondre à RED
+    print(f"   Chargement NIR...")
     nir = reproject_match(band_nir, tr, crs, w, h, Resampling.bilinear)
     
+    # Vérifier les dimensions
+    red, nir = ensure_same_shape(red, nir, band_red, band_nir)
+    
     # Calculer NDVI
-    print(f"   🔧 Calcul NDVI...")
+    print(f"\n🔧 Calcul NDVI...")
     ndvi = compute_ndvi(nir, red)
+    
+    # Statistiques NDVI
+    valid_ndvi = ndvi[np.isfinite(ndvi)]
+    if len(valid_ndvi) > 0:
+        print(f"   NDVI: min={valid_ndvi.min():.3f}, max={valid_ndvi.max():.3f}, mean={valid_ndvi.mean():.3f}")
     
     # Binarisation
     print(f"\n🔧 Binarisation...")
     mask_u8, thr = make_binary_from_ndvi(ndvi, config)
     print(f"   Seuil NDVI: {thr:.3f} ({config['threshold_mode']})")
+    print(f"   Pixels sélectionnés: {mask_u8.sum():,}")
     
     if mask_u8.max() == 0:
         raise RuntimeError("Aucun pixel sélectionné. Ajustez les paramètres.")
@@ -269,6 +396,8 @@ def process_ndvi(band_red, band_nir, output_dir, output_name, config=None):
     if not config['FAST_MEAN_ONLY'] and dropped_p90:
         print(f"   🚫 Composantes supprimées (p90 NDVI): {dropped_p90}")
     
+    print(f"   Pixels finaux: {final_mask.sum():,}")
+    
     if final_mask.max() == 0:
         raise RuntimeError("Tous les objets filtrés. Ajustez les paramètres.")
     
@@ -279,12 +408,16 @@ def process_ndvi(band_red, band_nir, output_dir, output_name, config=None):
     if gdf.empty:
         raise RuntimeError("Vectorisation vide.")
     
+    print(f"   Polygones créés: {len(gdf)}")
+    
     # Calcul des aires
     print(f"\n📏 Calcul des aires...")
     gdf_m = to_metric_for_area(gdf, config['TARGET_EPSG'])
     gdf_m["area_m2"] = gdf_m.geometry.area
     gdf_m = gdf_m[gdf_m["area_m2"] >= config['min_area_m2']].copy()
     gdf_m["area_km2"] = (gdf_m["area_m2"] / 1e6)
+    
+    print(f"   Polygones après filtrage (>{config['min_area_m2']}m²): {len(gdf_m)}")
     
     # Champ total
     if config.get('ADD_TOTAL_FIELD', True) and not gdf_m.empty:

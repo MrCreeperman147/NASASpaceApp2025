@@ -13,6 +13,7 @@ from pathlib import Path
 from datetime import datetime
 import subprocess
 import pickle
+import skimage
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow

@@ -19,6 +19,8 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import threading
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
 # Importer le filtre de marée et le pipeline
 sys.path.insert(0, str(Path(__file__).parent))
@@ -59,7 +61,32 @@ class FoliumMapGUI:
         self.temp_map_file = None
         self.map_object = None
         
+        # Initialiser le dictionnaire des shapefiles
+        self.shapefiles = {}
+        
+        # Initialiser le PipelineProcessor si disponible
+        if PIPELINE_AVAILABLE and PipelineProcessor:
+            try:
+                self.PipelineProcessor = PipelineProcessor()
+                print("✅ Pipeline processor initialisé")
+            except Exception as e:
+                self.PipelineProcessor = None
+                print(f"⚠️ Erreur initialisation pipeline: {e}")
+        else:
+            self.PipelineProcessor = None
+        
         self.setup_gui()
+
+        # Charger les shapefiles existants
+        print("🔍 Chargement des shapefiles...")
+        self.load_existing_shapefiles()
+        print(f"📊 Shapefiles chargés: {list(self.shapefiles.keys())}")
+
+        self.create_folium_map()
+
+        # Charger les shapefiles existants (after GUI setup for update_info)
+        self.load_existing_shapefiles()
+        
         self.create_folium_map()
     
     def setup_gui(self):
@@ -251,40 +278,72 @@ class FoliumMapGUI:
             lon = float(self.lon_var.get())
             zoom = int(self.zoom_var.get())
             
+            print(f"🗺️ Création carte: lat={lat}, lon={lon}, zoom={zoom}")
+            
             # Créer la carte Folium
             self.map_object = folium.Map(
                 location=[lat, lon],
                 zoom_start=zoom,
-                tiles=None  # Nous ajouterons les tiles manuellement
+                tiles=None
             )
+            
+            print(f"✅ Objet carte créé")
             
             # Ajouter le style de carte sélectionné
             self.add_map_tiles()
+            print(f"✅ Tiles ajoutés")
             
             # Ajouter les marqueurs des lieux prédéfinis
             self.add_location_markers()
+            print(f"✅ Marqueurs ajoutés: {len(self.locations)}")
             
             # Ajouter les shapefiles
+            print(f"📊 Shapefiles disponibles: {len(self.shapefiles)}")
             self.add_shapefiles_to_map()
+            print(f"✅ Shapefiles ajoutés")
             
             # Ajouter des plugins utiles
             self.add_map_plugins()
+            print(f"✅ Plugins ajoutés")
             
             # Afficher les informations de la carte
             self.show_map_preview()
             
-            self.update_info(f"✅ Carte générée: centre ({lat}, {lon}), zoom {zoom}")
-            self.update_info(f"🛰️ Satellite activé par défaut - Changez le style via le contrôle de couches sur la carte")
+            self.update_info(f"✅ Carte générée avec {len(self.shapefiles)} shapefile(s)")
             
         except ValueError as e:
             messagebox.showerror("Erreur", f"Coordonnées invalides: {e}")
         except Exception as e:
+            print(f"❌ ERREUR create_folium_map: {e}")
+            import traceback
+            traceback.print_exc()
             messagebox.showerror("Erreur", f"Erreur lors de la création de la carte: {e}")
     
     def add_map_tiles(self):
         """Ajoute plusieurs styles de carte accessibles via le contrôle de couches"""
         
-        # 1. Vue satellite Esri (par défaut, visible au démarrage)
+        """
+        # 1. Vue satellite VIIRS True Color (daily, time-enabled; NASA)
+        folium.TileLayer(
+            tiles="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/{date}/GoogleMapsCompatible_Level9/{{z}}/{{y}}/{{x}}.jpg",
+            attr="Imagery © NASA EOSDIS GIBS",
+            name="🛰️ NASA VIIRS True Color",
+            overlay=False,
+            control=True,
+            show=True  # Visible par défaut
+        ).add_to(self.map_object)
+
+        # 2. Vue satellite Esri (par défaut, visible au démarrage)
+        folium.TileLayer(
+            tiles="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/default/2004-01-01/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg",
+            attr="NASA Blue Marble",
+            name='🛰️ Imagery © NASA EOSDIS GIBS',
+            overlay=False,
+            control=True,
+            show=True  # Visible par défaut
+        ).add_to(self.map_object)
+        """
+        # 3. Vue satellite Esri
         folium.TileLayer(
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             attr='Esri World Imagery',
@@ -294,7 +353,7 @@ class FoliumMapGUI:
             show=True  # Visible par défaut
         ).add_to(self.map_object)
         
-        # 2. Satellite avec labels et routes
+        # 4. Satellite avec labels et routes
         satellite_hybrid = folium.FeatureGroup(name='🗺️ Satellite + Routes', show=False)
         folium.TileLayer(
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -308,7 +367,7 @@ class FoliumMapGUI:
         ).add_to(satellite_hybrid)
         satellite_hybrid.add_to(self.map_object)
         
-        # 3. OpenStreetMap
+        # 5. OpenStreetMap
         folium.TileLayer(
             'OpenStreetMap',
             name='🗺️ OpenStreetMap',
@@ -317,7 +376,7 @@ class FoliumMapGUI:
             show=False
         ).add_to(self.map_object)
         
-        # 4. CartoDB Positron (clair)
+        # 6. CartoDB Positron (clair)
         folium.TileLayer(
             'CartoDB positron',
             name='⚪ CartoDB Clair',
@@ -326,7 +385,7 @@ class FoliumMapGUI:
             show=False
         ).add_to(self.map_object)
         
-        # 5. CartoDB Dark Matter (sombre)
+        # 8. CartoDB Dark Matter (sombre)
         folium.TileLayer(
             'CartoDB dark_matter',
             name='⚫ CartoDB Sombre',
@@ -335,7 +394,7 @@ class FoliumMapGUI:
             show=False
         ).add_to(self.map_object)
         
-        # 6. OpenTopoMap (relief)
+        # 9. OpenTopoMap (relief)
         folium.TileLayer(
             'OpenTopoMap',
             name='🏔️ Relief (Topo)',
@@ -344,7 +403,7 @@ class FoliumMapGUI:
             show=False
         ).add_to(self.map_object)
         
-        # 7. Stamen Terrain
+        # 10. Stamen Terrain
         folium.TileLayer(
             tiles='https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}.png',
             attr='Stamen Terrain',
@@ -1025,18 +1084,23 @@ class FoliumMapGUI:
         if not self.shapefiles:
             return
         
+        import geopandas as gpd
+        
         years = sorted(self.shapefiles.keys())
         min_year = min(years)
         max_year = max(years)
         
         print(f"\n📊 Ajout des shapefiles ({len(years)} années)")
-        print(f"   Gradient: {min_year} (ancien/transparent) → {max_year} (récent/opaque)")
+        
+        # Pour calculer les bounds globaux
+        all_bounds = []
         
         for year in years:
             shp_info = self.shapefiles[year]
             shp_path = Path(shp_info['path'])
             
             if not shp_path.exists():
+                print(f"   ⚠️  Fichier manquant: {shp_path}")
                 continue
             
             try:
@@ -1044,19 +1108,32 @@ class FoliumMapGUI:
                 gdf = gpd.read_file(shp_path)
                 
                 if gdf.empty:
+                    print(f"   ⚠️  Shapefile vide: {year}")
                     continue
+                
+                # DIAGNOSTIC: Afficher le CRS et les bounds
+                print(f"   📍 {year}: CRS = {gdf.crs}")
+                print(f"        Bounds = {gdf.total_bounds}")
+                print(f"        Polygones = {len(gdf)}")
+                
+                # Reprojeter en WGS84 (EPSG:4326) pour Folium
+                if gdf.crs and gdf.crs != 'EPSG:4326':
+                    print(f"        🔄 Reprojection vers WGS84...")
+                    gdf = gdf.to_crs('EPSG:4326')
+                    print(f"        ✅ Bounds WGS84 = {gdf.total_bounds}")
+                
+                # Sauvegarder les bounds
+                all_bounds.append(gdf.total_bounds)
                 
                 # Obtenir la couleur et l'opacité
                 color, opacity = self.get_color_for_year(year, min_year, max_year)
                 
                 # Créer un FeatureGroup pour cette année
-                fg = folium.FeatureGroup(name=f"📅 {year}", show=False)
+                fg = folium.FeatureGroup(name=f"📅 {year}", show=True)
                 
                 # Ajouter chaque polygone
                 for idx, row in gdf.iterrows():
-                    # Info popup
                     area_km2 = row.get('area_km2', 0)
-                    area_m2 = row.get('area_m2', 0)
                     
                     popup_html = f"""
                     <div style='width: 200px; font-family: Arial;'>
@@ -1065,9 +1142,7 @@ class FoliumMapGUI:
                         </h4>
                         <hr style='margin: 10px 0;'>
                         <p style='margin: 5px 0;'>
-                            <b>📐 Surface:</b><br>
-                            {area_km2:.4f} km²<br>
-                            {area_m2:.0f} m²
+                            <b>📐 Surface:</b> {area_km2:.4f} km²
                         </p>
                     </div>
                     """
@@ -1082,21 +1157,38 @@ class FoliumMapGUI:
                             'fillOpacity': o,
                             'opacity': 1.0
                         },
-                        popup=folium.Popup(popup_html, max_width=250)
+                        popup=folium.Popup(popup_html, max_width=250),
+                        tooltip=f"Année {year}"
                     ).add_to(fg)
                 
                 # Ajouter le FeatureGroup à la carte
                 fg.add_to(self.map_object)
-                
-                # Sauvegarder la référence
                 shp_info['layer'] = fg
                 
-                print(f"   ✅ {year}: {len(gdf)} polygone(s) - Couleur: {color}, Opacité: {opacity:.2f}")
+                print(f"   ✅ {year}: {len(gdf)} polygone(s) ajouté(s)")
                 
             except Exception as e:
                 print(f"   ❌ Erreur pour {year}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
-    
+        
+        # Zoomer sur les shapefiles
+        if all_bounds:
+            print(f"\n🔍 Ajustement du zoom sur les shapefiles...")
+            # Calculer les bounds globaux
+            min_x = min(b[0] for b in all_bounds)
+            min_y = min(b[1] for b in all_bounds)
+            max_x = max(b[2] for b in all_bounds)
+            max_y = max(b[3] for b in all_bounds)
+            
+            bounds = [[min_y, min_x], [max_y, max_x]]
+            print(f"   Bounds globaux: {bounds}")
+            
+            # Ajouter fit_bounds à la carte
+            self.map_object.fit_bounds(bounds, padding=[50, 50])
+            print(f"   ✅ Zoom ajusté")
+            
     def update_info(self, message):
         """Met à jour le texte d'information"""
         self.info_text.insert(tk.END, f"{message}\n")
