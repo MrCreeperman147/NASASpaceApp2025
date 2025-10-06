@@ -68,6 +68,18 @@ class FoliumMapGUI:
         # Variable pour stocker la date sélectionnée
         self.selected_tiff_date = None
 
+        # Variables pour les widgets et couleurs
+        self.shapefile_start_color = "#0000FF"  # Bleu par défaut
+        self.shapefile_end_color = "#FF0000"    # Rouge par défaut
+        
+        # Dossiers pour les images et données radar
+        self.images_dir = Path("data/image")
+        self.radar_dir = Path("data/radar")
+        
+        # Créer les dossiers s'ils n'existent pas
+        self.images_dir.mkdir(parents=True, exist_ok=True)
+        self.radar_dir.mkdir(parents=True, exist_ok=True)
+
         # Initialiser le PipelineProcessor si disponible
         if PIPELINE_AVAILABLE and PipelineProcessor:
             try:
@@ -92,6 +104,11 @@ class FoliumMapGUI:
         self.load_existing_shapefiles()
         
         self.create_folium_map()
+
+        # Créer le dossier static pour les PNG
+        static_dir = Path("static/tiffs")
+        static_dir.mkdir(parents=True, exist_ok=True)
+
     
     def setup_gui(self):
         """Configure l'interface graphique"""
@@ -149,78 +166,150 @@ class FoliumMapGUI:
         ttk.Button(btn_frame, text="📍 Ajouter Point", 
                   command=self.add_custom_marker).grid(row=0, column=4, padx=2)
         
-        # Section Filtrage des Marées
+        # Section Filtrage des Marées - ROW 2
         tide_frame = ttk.LabelFrame(control_frame, text="🌊 Filtrage des Données de Marée", padding="10")
         tide_frame.grid(row=2, column=0, columnspan=6, sticky=(tk.W, tk.E), pady=(10, 0))
-        
+
         # Ligne 1: Import CSV
         csv_row = ttk.Frame(tide_frame)
         csv_row.grid(row=0, column=0, columnspan=4, sticky=(tk.W, tk.E), pady=(0, 10))
-        
+
         ttk.Label(csv_row, text="Fichier CSV:").grid(row=0, column=0, padx=(0, 5))
         self.csv_path_var = tk.StringVar(value="Aucun fichier sélectionné")
         csv_label = ttk.Label(csv_row, textvariable=self.csv_path_var, 
-                              foreground="gray", width=40)
+                            foreground="gray", width=40)
         csv_label.grid(row=0, column=1, padx=(0, 10))
-        
+
         ttk.Button(csv_row, text="📁 Importer CSV", 
-                  command=self.import_csv).grid(row=0, column=2, padx=2)
-        
+                command=self.import_csv).grid(row=0, column=2, padx=2)
+
         # Ligne 2: Dates limites
         date_row = ttk.Frame(tide_frame)
         date_row.grid(row=1, column=0, columnspan=4, sticky=(tk.W, tk.E), pady=(0, 10))
-        
+
         ttk.Label(date_row, text="Date début:").grid(row=0, column=0, padx=(0, 5))
         self.start_date_var = tk.StringVar(value="")
         start_date_entry = ttk.Entry(date_row, textvariable=self.start_date_var, width=15)
         start_date_entry.grid(row=0, column=1, padx=(0, 10))
         ttk.Label(date_row, text="(YYYY-MM-DD)", foreground="gray").grid(row=0, column=2, padx=(0, 20))
-        
+
         ttk.Label(date_row, text="Date fin:").grid(row=0, column=3, padx=(0, 5))
         self.end_date_var = tk.StringVar(value="")
         end_date_entry = ttk.Entry(date_row, textvariable=self.end_date_var, width=15)
         end_date_entry.grid(row=0, column=4, padx=(0, 10))
         ttk.Label(date_row, text="(YYYY-MM-DD)", foreground="gray").grid(row=0, column=5)
-        
+
         # Ligne 3: Niveaux de marée
         level_row = ttk.Frame(tide_frame)
         level_row.grid(row=2, column=0, columnspan=4, sticky=(tk.W, tk.E), pady=(0, 10))
-        
+
         ttk.Label(level_row, text="Niveau min (m):").grid(row=0, column=0, padx=(0, 5))
         self.min_level_var = tk.StringVar(value="")
         min_level_entry = ttk.Entry(level_row, textvariable=self.min_level_var, width=10)
         min_level_entry.grid(row=0, column=1, padx=(0, 20))
-        
+
         ttk.Label(level_row, text="Niveau max (m):").grid(row=0, column=2, padx=(0, 5))
         self.max_level_var = tk.StringVar(value="")
         max_level_entry = ttk.Entry(level_row, textvariable=self.max_level_var, width=10)
         max_level_entry.grid(row=0, column=3, padx=(0, 20))
-        
+
         # Ligne 4: Boutons d'action
         action_row = ttk.Frame(tide_frame)
         action_row.grid(row=3, column=0, columnspan=4, sticky=(tk.W, tk.E))
-        
+
         ttk.Button(action_row, text="🔍 Filtrer Données", 
-                  command=self.filter_tide_data).grid(row=0, column=0, padx=2)
-        
+                command=self.filter_tide_data).grid(row=0, column=0, padx=2)
+
         ttk.Button(action_row, text="📊 Voir Statistiques", 
-                  command=self.show_statistics).grid(row=0, column=1, padx=2)
-        
+                command=self.show_statistics).grid(row=0, column=1, padx=2)
+
         ttk.Button(action_row, text="🗑️ Réinitialiser", 
-                  command=self.reset_tide_filters).grid(row=0, column=2, padx=2)
-        
-        # Section Pipeline de Traitement
+                command=self.reset_tide_filters).grid(row=0, column=2, padx=2)
+
+        # ====================================================================
+        # Section Personnalisation des Couleurs - ROW 3 (changé de 2 à 3)
+        # ====================================================================
+        color_frame = ttk.LabelFrame(control_frame, text="🎨 Couleurs des Shapefiles", padding="10")
+        color_frame.grid(row=3, column=0, columnspan=6, sticky=(tk.W, tk.E), pady=(10, 0))
+
+        # Ligne de sélection des couleurs
+        color_row = ttk.Frame(color_frame)
+        color_row.grid(row=0, column=0, columnspan=4, sticky=(tk.W, tk.E))
+
+        ttk.Label(color_row, text="Couleur ancienne (début):").grid(row=0, column=0, padx=(0, 5))
+        self.start_color_var = tk.StringVar(value=self.shapefile_start_color)
+        start_color_entry = ttk.Entry(color_row, textvariable=self.start_color_var, width=10)
+        start_color_entry.grid(row=0, column=1, padx=(0, 5))
+
+        # Bouton pour sélectionner la couleur de début
+        def choose_start_color():
+            from tkinter import colorchooser
+            color = colorchooser.askcolor(initialcolor=self.start_color_var.get())
+            if color[1]:
+                self.start_color_var.set(color[1])
+                self.shapefile_start_color = color[1]
+
+        ttk.Button(color_row, text="🎨", command=choose_start_color, width=3).grid(row=0, column=2, padx=(0, 20))
+
+        ttk.Label(color_row, text="Couleur récente (fin):").grid(row=0, column=3, padx=(0, 5))
+        self.end_color_var = tk.StringVar(value=self.shapefile_end_color)
+        end_color_entry = ttk.Entry(color_row, textvariable=self.end_color_var, width=10)
+        end_color_entry.grid(row=0, column=4, padx=(0, 5))
+
+        # Bouton pour sélectionner la couleur de fin
+        def choose_end_color():
+            from tkinter import colorchooser
+            color = colorchooser.askcolor(initialcolor=self.end_color_var.get())
+            if color[1]:
+                self.end_color_var.set(color[1])
+                self.shapefile_end_color = color[1]
+
+        ttk.Button(color_row, text="🎨", command=choose_end_color, width=3).grid(row=0, column=5, padx=(0, 10))
+
+        # Aperçu du gradient
+        gradient_canvas = tk.Canvas(color_row, width=200, height=20)
+        gradient_canvas.grid(row=0, column=6, padx=(10, 0))
+
+        def update_gradient_preview():
+            gradient_canvas.delete("all")
+            for i in range(200):
+                ratio = i / 200
+                # Interpoler entre start et end color
+                start_rgb = tuple(int(self.start_color_var.get()[j:j+2], 16) for j in (1, 3, 5))
+                end_rgb = tuple(int(self.end_color_var.get()[j:j+2], 16) for j in (1, 3, 5))
+                
+                r = int(start_rgb[0] + (end_rgb[0] - start_rgb[0]) * ratio)
+                g = int(start_rgb[1] + (end_rgb[1] - start_rgb[1]) * ratio)
+                b = int(start_rgb[2] + (end_rgb[2] - start_rgb[2]) * ratio)
+                
+                color = f"#{r:02x}{g:02x}{b:02x}"
+                gradient_canvas.create_line(i, 0, i, 20, fill=color)
+
+        # Lier les changements de couleur à la mise à jour du gradient
+        self.start_color_var.trace('w', lambda *args: update_gradient_preview())
+        self.end_color_var.trace('w', lambda *args: update_gradient_preview())
+
+        # Initialiser l'aperçu
+        update_gradient_preview()
+
+        # Bouton pour appliquer
+        ttk.Button(color_frame, text="✅ Appliquer les couleurs", 
+                command=self.apply_color_gradient).grid(row=1, column=0, pady=(10, 0))
+
+        # ====================================================================
+        # Section Pipeline de Traitement - ROW 4 (changé de 3 à 4)
+        # ====================================================================
         pipeline_frame = ttk.LabelFrame(control_frame, text="🚀 Pipeline de Traitement Sentinel-2", padding="10")
-        pipeline_frame.grid(row=3, column=0, columnspan=6, sticky=(tk.W, tk.E), pady=(10, 0))
-        
+        pipeline_frame.grid(row=4, column=0, columnspan=6, sticky=(tk.W, tk.E), pady=(10, 0))
+
         # Bouton de lancement du pipeline
         ttk.Button(pipeline_frame, text="🛰️ Lancer Pipeline Complet", 
-                  command=self.run_pipeline, 
-                  style='Accent.TButton').grid(row=0, column=0, padx=5, pady=5)
-        
+                command=self.run_pipeline, 
+                style='Accent.TButton').grid(row=0, column=0, padx=5, pady=5)
+
         ttk.Label(pipeline_frame, text="(Télécharge, traite et génère les shapefiles)", 
-                 foreground="gray").grid(row=0, column=1, padx=5)
-        
+                foreground="gray").grid(row=0, column=1, padx=5)
+
         # Barre de progression
         self.pipeline_progress_var = tk.DoubleVar()
         self.pipeline_progress = ttk.Progressbar(
@@ -231,15 +320,11 @@ class FoliumMapGUI:
             length=300
         )
         self.pipeline_progress.grid(row=1, column=0, columnspan=2, pady=5, sticky=(tk.W, tk.E))
-        
+
         self.pipeline_status_var = tk.StringVar(value="Prêt")
         ttk.Label(pipeline_frame, textvariable=self.pipeline_status_var).grid(
             row=2, column=0, columnspan=2, pady=2
         )
-        
-        # Style de carte - SUPPRIMÉ (sera dynamique sur la carte web)
-        
-        # Lieux prédéfinis - SUPPRIMÉ
         
         # Frame pour l'aperçu de la carte
         preview_frame = ttk.LabelFrame(main_frame, text="Aperçu de la Carte", padding="5")
@@ -498,170 +583,459 @@ class FoliumMapGUI:
         
         # Ajouter un contrôle de couches
         folium.LayerControl(position='topright').add_to(self.map_object)
-    
+
+  #======================================================================================
+
     def add_tiff_viewer_widget(self):
-        """Ajoute le widget de visualisation des TIFF en bas à droite de la carte"""
+        """Timeline par année + Widgets masquables pour images et TIFF - disposition optimisée"""
         if not self.tiff_data:
             return
         
-        # Convertir les chemins TIFF en chemins relatifs pour le HTML
-        tiff_info = []
-        for date_str in sorted(self.tiff_data.keys()):
-            info = self.tiff_data[date_str]
+        # Préparer les TIFF pour le web
+        try:
+            import sys
+            from pathlib import Path
+            sys.path.insert(0, str(Path(__file__).parent))
+            from tiff_to_tiles import prepare_tiffs_for_web
+        except ImportError:
+            try:
+                from src.tiff_to_tiles import prepare_tiffs_for_web
+            except ImportError as e:
+                print(f"⚠️  Erreur import tiff_to_tiles: {e}")
+                return
+        
+        print("\n🔄 Préparation des TIFF pour l'affichage web...")
+        web_tiffs = prepare_tiffs_for_web()
+        
+        if not web_tiffs:
+            print("⚠️  Aucun TIFF converti")
+            return
+        
+        # Organiser les données par année
+        tiff_by_year = {}
+        for date_str in sorted(web_tiffs.keys()):
+            year = date_str[:4]
+            if year not in tiff_by_year:
+                tiff_by_year[year] = []
             
-            # Convertir les chemins absolus en relatifs depuis le fichier HTML
-            ndvi_rel = Path(info['ndvi_path']).as_posix()
-            
-            tiff_info.append({
+            info = web_tiffs[date_str]
+            tiff_by_year[year].append({
                 'date': date_str,
-                'ndvi_path': ndvi_rel,
-                'selected': date_str == self.selected_tiff_date
+                'png_path': info['png_path'],
+                'bounds': info['bounds']
             })
         
-        # Générer le JavaScript pour le widget
+        # Créer la liste des années
+        years = sorted(tiff_by_year.keys())
+        year_data = []
+        for year in years:
+            year_data.append({
+                'year': year,
+                'dates': tiff_by_year[year],
+                'selected': year == years[-1] if years else False
+            })
+        
+        # Lister les images PNG dans data/image
+        image_files = []
+        if self.images_dir.exists():
+            for img in sorted(self.images_dir.glob('*.png')):
+                image_files.append({
+                    'name': img.name,
+                    'path': str(img.relative_to(Path.cwd()))
+                })
+            for img in sorted(self.images_dir.glob('*.jpg')):
+                image_files.append({
+                    'name': img.name,
+                    'path': str(img.relative_to(Path.cwd()))
+                })
+        
+        # Créer le dossier static/tiffs s'il n'existe pas
+        static_tiffs = Path('static/tiffs')
+        static_tiffs.mkdir(parents=True, exist_ok=True)
+        
+        # Lister les TIFF générés dans data/processed
+        tiff_images = []
+        processed_path = Path('data/processed')
+        if processed_path.exists():
+            for date_folder in sorted(processed_path.glob('*')):
+                if not date_folder.is_dir():
+                    continue
+                
+                date_str = date_folder.name
+                
+                tiff_files = {
+                    'B04': list(date_folder.glob('B04_*.tif')),
+                    'B08': list(date_folder.glob('B08_*.tif')),
+                    'NDVI': list(date_folder.glob('NDVI_*.tif'))
+                }
+                
+                for tiff_type, files in tiff_files.items():
+                    if files:
+                        tiff_path = files[0]
+                        png_path = static_tiffs / f"{date_str}_{tiff_type}.png"
+                        
+                        try:
+                            if not png_path.exists():
+                                from tiff_to_tiles import convert_tiff_to_png_with_palette
+                                convert_tiff_to_png_with_palette(tiff_path, png_path)
+                            
+                            tiff_images.append({
+                                'date': date_str,
+                                'type': tiff_type,
+                                'path': str(png_path.relative_to(Path.cwd())),
+                                'name': f"{tiff_type} - {date_str}",
+                                'original': str(tiff_path)
+                            })
+                        except Exception as e:
+                            print(f"   ⚠️  Erreur conversion {tiff_type}: {e}")
+        
+        # Générer le JavaScript avec disposition optimisée
         widget_js = f"""
-        <script>
-            // Données des TIFF
-            const tiffData = {json.dumps(tiff_info)};
+        <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+        <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+        <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+        
+        <style>
+            .widget-container {{
+                position: absolute;
+                background: white;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                z-index: 1000;
+                font-family: Arial, sans-serif;
+                max-height: 90vh;
+                display: flex;
+                flex-direction: column;
+            }}
             
-            // Créer le widget
-            const widgetHTML = `
-                <div id="tiff-viewer-widget" style="
-                    position: absolute;
-                    bottom: 20px;
-                    right: 20px;
-                    background: white;
-                    padding: 15px;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-                    max-width: 280px;
-                    max-height: 400px;
-                    overflow-y: auto;
-                    z-index: 1000;
-                    font-family: Arial, sans-serif;
-                ">
-                    <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #333;">
-                        📊 NDVI par Date
-                    </h3>
-                    <div id="tiff-date-list"></div>
-                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 11px; color: #666;">
-                        💡 Sélectionnez une date pour visualiser
+            .widget-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 10px 15px;
+                color: white;
+                border-radius: 8px 8px 0 0;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: bold;
+                flex-shrink: 0;
+            }}
+            
+            .widget-content {{
+                padding: 15px;
+                overflow-y: auto;
+                flex: 1;
+                max-height: calc(90vh - 50px);
+            }}
+            
+            .image-thumb {{
+                width: 100%;
+                max-width: 150px;
+                margin: 5px 0;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: transform 0.2s;
+            }}
+            
+            .image-thumb:hover {{
+                transform: scale(1.05);
+            }}
+        </style>
+        
+        <script>
+            const yearData = {json.dumps(year_data)};
+            const imageFiles = {json.dumps(image_files)};
+            const tiffImages = {json.dumps(tiff_images)};
+            
+            let currentTiffLayer = null;
+            let currentYearIndex = yearData.length - 1;
+            
+            const widgetsHTML = `
+                <!-- Timeline Widget (haut droite) -->
+                <div class="widget-container" style="top: 80px; right: 20px; width: 320px; max-height: 500px;">
+                    <div class="widget-header" style="background: #4CAF50;">
+                        📅 Timeline par Année
+                    </div>
+                    <div class="widget-content">
+                        <div style="margin-bottom: 15px;">
+                            <div id="current-year-display" style="
+                                font-size: 18px;
+                                font-weight: bold;
+                                color: #4CAF50;
+                                text-align: center;
+                                margin-bottom: 10px;
+                            "></div>
+                            
+                            <div id="current-date-display" style="
+                                font-size: 14px;
+                                color: #666;
+                                text-align: center;
+                                margin-bottom: 15px;
+                            "></div>
+                        </div>
+                        
+                        <!-- Slider pour les années -->
+                        <div style="margin: 20px 10px;">
+                            <label style="font-size: 12px; color: #666; margin-bottom: 5px; display: block;">
+                                Année:
+                            </label>
+                            <div id="year-slider"></div>
+                            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 5px;">
+                                <span id="year-start"></span>
+                                <span id="year-end"></span>
+                            </div>
+                        </div>
+                        
+                        <!-- Slider pour les dates -->
+                        <div id="date-slider-container" style="margin: 20px 10px;">
+                            <label style="font-size: 12px; color: #666; margin-bottom: 5px; display: block;">
+                                Date:
+                            </label>
+                            <div id="date-slider"></div>
+                            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 5px;">
+                                <span id="date-start"></span>
+                                <span id="date-end"></span>
+                            </div>
+                        </div>
+                        
+                        <!-- Contrôle opacité -->
+                        <div style="margin: 15px 10px;">
+                            <label style="font-size: 12px; color: #666;">
+                                Opacité:
+                                <input type="range" id="tiff-opacity-slider" min="0" max="100" value="70" 
+                                    style="width: 100%;">
+                                <span id="tiff-opacity-value">70%</span>
+                            </label>
+                        </div>
+                        
+                        <!-- Légende compacte -->
+                        <div style="margin-top: 15px; padding: 10px; background: #f9f9f9; border-radius: 4px; font-size: 10px;">
+                            <div style="font-weight: bold; margin-bottom: 5px;">Légende NDVI:</div>
+                            <div style="display: grid; grid-template-columns: auto 1fr; gap: 3px; line-height: 1.6;">
+                                <span style="width:12px; height:12px; background:rgba(0,0,255,0.7); display:inline-block;"></span><span>Eau</span>
+                                <span style="width:12px; height:12px; background:rgba(165,42,42,0.7); display:inline-block;"></span><span>Sol nu</span>
+                                <span style="width:12px; height:12px; background:rgba(255,255,0,0.8); display:inline-block;"></span><span>Vég. faible</span>
+                                <span style="width:12px; height:12px; background:rgba(144,238,144,0.9); display:inline-block;"></span><span>Vég. moyenne</span>
+                                <span style="width:12px; height:12px; background:rgba(0,128,0,0.9); display:inline-block;"></span><span>Vég. dense</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Widget Images (bas gauche) -->
+                <div class="widget-container" style="bottom: 20px; left: 20px; width: 250px; max-height: 350px;">
+                    <div class="widget-header" style="background: #2196F3;" onclick="toggleWidget('images')">
+                        <span>🖼️ Images</span>
+                        <span id="images-toggle">▼</span>
+                    </div>
+                    <div id="images-content" class="widget-content">
+                        <div id="images-list"></div>
+                    </div>
+                </div>
+                
+                <!-- Widget TIFF (bas centre) -->
+                <div class="widget-container" style="bottom: 20px; left: 290px; width: 250px; max-height: 350px;">
+                    <div class="widget-header" style="background: #FF9800;" onclick="toggleWidget('tiff-images')">
+                        <span>📊 TIFF NDVI</span>
+                        <span id="tiff-images-toggle">▼</span>
+                    </div>
+                    <div id="tiff-images-content" class="widget-content">
+                        <div id="tiff-images-list"></div>
                     </div>
                 </div>
             `;
             
-            // Injecter le widget dans la carte
             document.addEventListener('DOMContentLoaded', function() {{
                 const mapContainer = document.querySelector('.folium-map');
                 if (mapContainer) {{
-                    mapContainer.insertAdjacentHTML('beforeend', widgetHTML);
+                    mapContainer.insertAdjacentHTML('beforeend', widgetsHTML);
                     
-                    // Créer la liste des dates
-                    const dateList = document.getElementById('tiff-date-list');
+                    initTimeline();
+                    populateImagesList();
+                    populateTiffImagesList();
                     
-                    tiffData.forEach(item => {{
-                        const div = document.createElement('div');
-                        div.style.cssText = `
-                            margin: 5px 0;
-                            padding: 8px;
-                            background: ${{item.selected ? '#4CAF50' : '#f5f5f5'}};
-                            color: ${{item.selected ? 'white' : '#333'}};
-                            border-radius: 4px;
-                            cursor: pointer;
-                            transition: background 0.2s;
-                            font-size: 13px;
-                        `;
-                        
-                        div.innerHTML = `
-                            <label style="cursor: pointer; display: block;">
-                                <input type="radio" name="tiff-date" value="${{item.date}}" 
-                                    ${{item.selected ? 'checked' : ''}}
-                                    style="margin-right: 8px;">
-                                ${{item.date}}
-                            </label>
-                        `;
-                        
-                        div.onmouseover = function() {{
-                            if (!item.selected) {{
-                                this.style.background = '#e0e0e0';
-                            }}
-                        }};
-                        
-                        div.onmouseout = function() {{
-                            if (!item.selected) {{
-                                this.style.background = '#f5f5f5';
-                            }}
-                        }};
-                        
-                        div.onclick = function(e) {{
-                            // Mettre à jour la sélection
-                            document.querySelectorAll('#tiff-date-list > div').forEach(d => {{
-                                d.style.background = '#f5f5f5';
-                                d.style.color = '#333';
-                            }});
-                            this.style.background = '#4CAF50';
-                            this.style.color = 'white';
-                            
-                            // Cocher le radio
-                            this.querySelector('input').checked = true;
-                            
-                            // Charger le TIFF
-                            loadTiffLayer(item.date, item.ndvi_path);
-                        }};
-                        
-                        dateList.appendChild(div);
-                    }});
+                    const opacitySlider = document.getElementById('tiff-opacity-slider');
+                    const opacityValue = document.getElementById('tiff-opacity-value');
                     
-                    // Charger le TIFF sélectionné par défaut
-                    const selected = tiffData.find(t => t.selected);
-                    if (selected) {{
-                        loadTiffLayer(selected.date, selected.ndvi_path);
-                    }}
+                    opacitySlider.oninput = function() {{
+                        const opacity = this.value / 100;
+                        opacityValue.textContent = this.value + '%';
+                        if (currentTiffLayer) {{
+                            currentTiffLayer.setOpacity(opacity);
+                        }}
+                    }};
                 }}
             }});
             
-            let currentTiffLayer = null;
-            
-            async function loadTiffLayer(date, path) {{
-                console.log('Chargement TIFF:', date, path);
+            function initTimeline() {{
+                if (yearData.length === 0) return;
                 
+                const years = yearData.map(y => y.year);
+                document.getElementById('year-start').textContent = years[0];
+                document.getElementById('year-end').textContent = years[years.length - 1];
+                
+                $("#year-slider").slider({{
+                    min: 0,
+                    max: yearData.length - 1,
+                    value: currentYearIndex,
+                    slide: function(event, ui) {{ updateYear(ui.value); }},
+                    change: function(event, ui) {{ updateYear(ui.value); }}
+                }});
+                
+                updateYear(currentYearIndex);
+            }}
+            
+            function updateYear(yearIndex) {{
+                currentYearIndex = yearIndex;
+                const yearInfo = yearData[yearIndex];
+                
+                document.getElementById('current-year-display').textContent = yearInfo.year;
+                
+                const dates = yearInfo.dates;
+                if (dates.length === 0) return;
+                
+                document.getElementById('date-start').textContent = dates[0].date;
+                document.getElementById('date-end').textContent = dates[dates.length - 1].date;
+                
+                $("#date-slider").slider('destroy').slider({{
+                    min: 0,
+                    max: dates.length - 1,
+                    value: dates.length - 1,
+                    slide: function(event, ui) {{ updateDate(yearIndex, ui.value); }},
+                    change: function(event, ui) {{ updateDate(yearIndex, ui.value); }}
+                }});
+                
+                updateDate(yearIndex, dates.length - 1);
+            }}
+            
+            function updateDate(yearIndex, dateIndex) {{
+                const yearInfo = yearData[yearIndex];
+                const dateInfo = yearInfo.dates[dateIndex];
+                
+                document.getElementById('current-date-display').textContent = dateInfo.date;
+                loadTiffOverlay(dateInfo);
+            }}
+            
+            function loadTiffOverlay(item) {{
                 try {{
-                    // Supprimer la couche précédente
                     if (currentTiffLayer) {{
                         map.removeLayer(currentTiffLayer);
+                        currentTiffLayer = null;
                     }}
                     
-                    // Pour l'instant, ajouter un message comme overlay
-                    // Dans une version complète, on utiliserait georaster-layer-for-leaflet
-                    const popup = L.popup()
-                        .setLatLng([47.4, -61.85])
-                        .setContent(`
-                            <div style="padding: 10px;">
-                                <h4>📊 NDVI</h4>
-                                <p>Date: ${{date}}</p>
-                                <p style="font-size: 11px; color: #666;">
-                                    Fichier: ${{path.split('/').pop()}}
-                                </p>
-                            </div>
-                        `)
-                        .openOn(map);
+                    const bounds = L.latLngBounds(
+                        L.latLng(item.bounds.south, item.bounds.west),
+                        L.latLng(item.bounds.north, item.bounds.east)
+                    );
                     
-                    currentTiffLayer = popup;
+                    currentTiffLayer = L.imageOverlay(
+                        item.png_path,
+                        bounds,
+                        {{
+                            opacity: document.getElementById('tiff-opacity-slider').value / 100,
+                            interactive: true,
+                            alt: `NDVI ${{item.date}}`
+                        }}
+                    );
                     
-                    // TODO: Implémenter le chargement réel du TIFF avec georaster-layer-for-leaflet
-                    // Voir: https://github.com/GeoTIFF/georaster-layer-for-leaflet
+                    currentTiffLayer.addTo(map);
+                    map.fitBounds(bounds, {{ padding: [50, 50] }});
+                    
+                    currentTiffLayer.on('click', function(e) {{
+                        L.popup()
+                            .setLatLng(e.latlng)
+                            .setContent(`<div style="padding:10px;"><h4 style="margin:0 0 10px 0;">📊 NDVI</h4><p style="margin:5px 0;"><b>Date:</b> ${{item.date}}</p></div>`)
+                            .openOn(map);
+                    }});
                     
                 }} catch (error) {{
                     console.error('Erreur chargement TIFF:', error);
-                    alert('Erreur lors du chargement du TIFF');
                 }}
+            }}
+            
+            function populateImagesList() {{
+                const list = document.getElementById('images-list');
+                
+                if (imageFiles.length === 0) {{
+                    list.innerHTML = '<p style="color:#999;font-size:11px;text-align:center;padding:10px;">Aucune image</p>';
+                    return;
+                }}
+                
+                imageFiles.forEach(img => {{
+                    const div = document.createElement('div');
+                    div.style.cssText = 'margin:8px 0;text-align:center;';
+                    div.innerHTML = `
+                        <div style="margin-bottom:3px;font-size:11px;font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${{img.name}}">${{img.name}}</div>
+                        <img src="${{img.path}}" class="image-thumb" onclick="showImagePopup('${{img.path}}','${{img.name}}')">
+                    `;
+                    list.appendChild(div);
+                }});
+            }}
+            
+            function populateTiffImagesList() {{
+                const list = document.getElementById('tiff-images-list');
+                
+                if (tiffImages.length === 0) {{
+                    list.innerHTML = '<p style="color:#999;font-size:11px;text-align:center;padding:10px;">Aucun TIFF</p>';
+                    return;
+                }}
+                
+                const byDate = {{}};
+                tiffImages.forEach(img => {{
+                    if (!byDate[img.date]) byDate[img.date] = [];
+                    byDate[img.date].push(img);
+                }});
+                
+                Object.keys(byDate).sort().reverse().forEach(date => {{
+                    const dateDiv = document.createElement('div');
+                    dateDiv.style.cssText = 'margin:10px 0;border-bottom:1px solid #eee;padding-bottom:8px;';
+                    
+                    let html = `<div style="font-size:11px;font-weight:bold;color:#FF9800;margin-bottom:5px;">📅 ${{date}}</div>`;
+                    
+                    byDate[date].forEach(img => {{
+                        html += `
+                            <div style="margin:5px 0;padding:3px;background:#f9f9f9;border-radius:3px;">
+                                <div style="font-size:10px;font-weight:bold;margin-bottom:2px;">${{img.type}}</div>
+                                <img src="${{img.path}}" class="image-thumb" onclick="showImagePopup('${{img.path}}','${{img.name}}')" style="max-width:100%;">
+                            </div>
+                        `;
+                    }});
+                    
+                    dateDiv.innerHTML = html;
+                    list.appendChild(dateDiv);
+                }});
+            }}
+            
+            function toggleWidget(widgetName) {{
+                const content = document.getElementById(widgetName + '-content');
+                const toggle = document.getElementById(widgetName + '-toggle');
+                
+                if (content.style.display === 'none') {{
+                    content.style.display = 'block';
+                    toggle.textContent = '▼';
+                }} else {{
+                    content.style.display = 'none';
+                    toggle.textContent = '▶';
+                }}
+            }}
+            
+            function showImagePopup(path, name) {{
+                L.popup({{ maxWidth: 600, maxHeight: 500 }})
+                .setLatLng(map.getCenter())
+                .setContent(`<div style="text-align:center;"><h4 style="margin:0 0 10px 0;">${{name}}</h4><img src="${{path}}" style="max-width:100%;max-height:400px;border-radius:4px;"/></div>`)
+                .openOn(map);
             }}
         </script>
         """
         
-        # Injecter le JavaScript dans la carte
         from folium import Element
         self.map_object.get_root().html.add_child(Element(widget_js))
+        
+        print(f"✅ Timeline et widgets ajoutés (disposition optimisée)")
+        print(f"   📅 {len(year_data)} année(s)")
+        print(f"   🖼️ {len(image_files)} images")
+        print(f"   📊 {len(tiff_images)} TIFF NDVI")
+# =============================================================================
 
     def show_map_preview(self):
         """Affiche un aperçu des informations de la carte"""
@@ -1256,7 +1630,7 @@ class FoliumMapGUI:
             
             # Recharger les shapefiles
             self.load_existing_shapefiles()
-            
+
             # Recharger les TIFF
             self.load_existing_tiffs()
 
@@ -1460,6 +1834,21 @@ class FoliumMapGUI:
             self.update_info(f"✅ {len(self.tiff_data)} date(s) TIFF chargée(s)")
         else:
             self.update_info("ℹ️  Aucun TIFF NDVI trouvé dans data/processed/")
+
+    def apply_color_gradient(self):
+        """Applique le gradient de couleur personnalisé aux shapefiles"""
+        try:
+            # Mettre à jour les variables
+            self.shapefile_start_color = self.start_color_var.get()
+            self.shapefile_end_color = self.end_color_var.get()
+            
+            # Régénérer la carte
+            self.create_folium_map()
+            
+            self.update_info(f"🎨 Gradient appliqué: {self.shapefile_start_color} → {self.shapefile_end_color}")
+            
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Erreur lors de l'application des couleurs:\n{e}")
 
     def __del__(self):
         """Nettoyage lors de la destruction"""
