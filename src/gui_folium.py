@@ -63,7 +63,11 @@ class FoliumMapGUI:
         
         # Initialiser le dictionnaire des shapefiles
         self.shapefiles = {}
-        
+        # Dictionnaire pour stocker les TIFF NDVI par date
+        self.tiff_data = {}
+        # Variable pour stocker la date sélectionnée
+        self.selected_tiff_date = None
+
         # Initialiser le PipelineProcessor si disponible
         if PIPELINE_AVAILABLE and PipelineProcessor:
             try:
@@ -306,6 +310,14 @@ class FoliumMapGUI:
             self.add_map_plugins()
             print(f"✅ Plugins ajoutés")
             
+            # Charger les TIFF disponibles
+            self.load_existing_tiffs()
+            print(f"📊 TIFF disponibles: {len(self.tiff_data)}")
+            
+            # Ajouter le widget de visualisation TIFF
+            self.add_tiff_viewer_widget()
+            print(f"✅ Widget TIFF ajouté")
+
             # Afficher les informations de la carte
             self.show_map_preview()
             
@@ -487,6 +499,170 @@ class FoliumMapGUI:
         # Ajouter un contrôle de couches
         folium.LayerControl(position='topright').add_to(self.map_object)
     
+    def add_tiff_viewer_widget(self):
+        """Ajoute le widget de visualisation des TIFF en bas à droite de la carte"""
+        if not self.tiff_data:
+            return
+        
+        # Convertir les chemins TIFF en chemins relatifs pour le HTML
+        tiff_info = []
+        for date_str in sorted(self.tiff_data.keys()):
+            info = self.tiff_data[date_str]
+            
+            # Convertir les chemins absolus en relatifs depuis le fichier HTML
+            ndvi_rel = Path(info['ndvi_path']).as_posix()
+            
+            tiff_info.append({
+                'date': date_str,
+                'ndvi_path': ndvi_rel,
+                'selected': date_str == self.selected_tiff_date
+            })
+        
+        # Générer le JavaScript pour le widget
+        widget_js = f"""
+        <script>
+            // Données des TIFF
+            const tiffData = {json.dumps(tiff_info)};
+            
+            // Créer le widget
+            const widgetHTML = `
+                <div id="tiff-viewer-widget" style="
+                    position: absolute;
+                    bottom: 20px;
+                    right: 20px;
+                    background: white;
+                    padding: 15px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                    max-width: 280px;
+                    max-height: 400px;
+                    overflow-y: auto;
+                    z-index: 1000;
+                    font-family: Arial, sans-serif;
+                ">
+                    <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #333;">
+                        📊 NDVI par Date
+                    </h3>
+                    <div id="tiff-date-list"></div>
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 11px; color: #666;">
+                        💡 Sélectionnez une date pour visualiser
+                    </div>
+                </div>
+            `;
+            
+            // Injecter le widget dans la carte
+            document.addEventListener('DOMContentLoaded', function() {{
+                const mapContainer = document.querySelector('.folium-map');
+                if (mapContainer) {{
+                    mapContainer.insertAdjacentHTML('beforeend', widgetHTML);
+                    
+                    // Créer la liste des dates
+                    const dateList = document.getElementById('tiff-date-list');
+                    
+                    tiffData.forEach(item => {{
+                        const div = document.createElement('div');
+                        div.style.cssText = `
+                            margin: 5px 0;
+                            padding: 8px;
+                            background: ${{item.selected ? '#4CAF50' : '#f5f5f5'}};
+                            color: ${{item.selected ? 'white' : '#333'}};
+                            border-radius: 4px;
+                            cursor: pointer;
+                            transition: background 0.2s;
+                            font-size: 13px;
+                        `;
+                        
+                        div.innerHTML = `
+                            <label style="cursor: pointer; display: block;">
+                                <input type="radio" name="tiff-date" value="${{item.date}}" 
+                                    ${{item.selected ? 'checked' : ''}}
+                                    style="margin-right: 8px;">
+                                ${{item.date}}
+                            </label>
+                        `;
+                        
+                        div.onmouseover = function() {{
+                            if (!item.selected) {{
+                                this.style.background = '#e0e0e0';
+                            }}
+                        }};
+                        
+                        div.onmouseout = function() {{
+                            if (!item.selected) {{
+                                this.style.background = '#f5f5f5';
+                            }}
+                        }};
+                        
+                        div.onclick = function(e) {{
+                            // Mettre à jour la sélection
+                            document.querySelectorAll('#tiff-date-list > div').forEach(d => {{
+                                d.style.background = '#f5f5f5';
+                                d.style.color = '#333';
+                            }});
+                            this.style.background = '#4CAF50';
+                            this.style.color = 'white';
+                            
+                            // Cocher le radio
+                            this.querySelector('input').checked = true;
+                            
+                            // Charger le TIFF
+                            loadTiffLayer(item.date, item.ndvi_path);
+                        }};
+                        
+                        dateList.appendChild(div);
+                    }});
+                    
+                    // Charger le TIFF sélectionné par défaut
+                    const selected = tiffData.find(t => t.selected);
+                    if (selected) {{
+                        loadTiffLayer(selected.date, selected.ndvi_path);
+                    }}
+                }}
+            }});
+            
+            let currentTiffLayer = null;
+            
+            async function loadTiffLayer(date, path) {{
+                console.log('Chargement TIFF:', date, path);
+                
+                try {{
+                    // Supprimer la couche précédente
+                    if (currentTiffLayer) {{
+                        map.removeLayer(currentTiffLayer);
+                    }}
+                    
+                    // Pour l'instant, ajouter un message comme overlay
+                    // Dans une version complète, on utiliserait georaster-layer-for-leaflet
+                    const popup = L.popup()
+                        .setLatLng([47.4, -61.85])
+                        .setContent(`
+                            <div style="padding: 10px;">
+                                <h4>📊 NDVI</h4>
+                                <p>Date: ${{date}}</p>
+                                <p style="font-size: 11px; color: #666;">
+                                    Fichier: ${{path.split('/').pop()}}
+                                </p>
+                            </div>
+                        `)
+                        .openOn(map);
+                    
+                    currentTiffLayer = popup;
+                    
+                    // TODO: Implémenter le chargement réel du TIFF avec georaster-layer-for-leaflet
+                    // Voir: https://github.com/GeoTIFF/georaster-layer-for-leaflet
+                    
+                }} catch (error) {{
+                    console.error('Erreur chargement TIFF:', error);
+                    alert('Erreur lors du chargement du TIFF');
+                }}
+            }}
+        </script>
+        """
+        
+        # Injecter le JavaScript dans la carte
+        from folium import Element
+        self.map_object.get_root().html.add_child(Element(widget_js))
+
     def show_map_preview(self):
         """Affiche un aperçu des informations de la carte"""
         if self.map_object:
@@ -986,6 +1162,50 @@ class FoliumMapGUI:
             except ValueError:
                 continue
     
+    def load_existing_tiffs(self):
+        """Charge les fichiers TIFF NDVI existants dans data/processed"""
+        processed_dir = Path("data/processed")
+        
+        if not processed_dir.exists():
+            self.update_info("📁 Création du dossier data/processed/")
+            processed_dir.mkdir(parents=True, exist_ok=True)
+            return
+        
+        # Chercher tous les dossiers de dates (format: YYYY-MM-DD)
+        date_folders = [d for d in processed_dir.iterdir() 
+                    if d.is_dir() and len(d.name) == 10 and d.name.count('-') == 2]
+        
+        for date_folder in sorted(date_folders):
+            date_str = date_folder.name
+            
+            # Chercher les fichiers NDVI
+            ndvi_files = list(date_folder.glob('NDVI_*.tif'))
+            
+            if ndvi_files:
+                self.tiff_data[date_str] = {
+                    'ndvi_path': str(ndvi_files[0]),
+                    'b04_path': None,
+                    'b08_path': None
+                }
+                
+                # Chercher aussi B04 et B08 si présents
+                b04_files = list(date_folder.glob('B04_*.tif'))
+                b08_files = list(date_folder.glob('B08_*.tif'))
+                
+                if b04_files:
+                    self.tiff_data[date_str]['b04_path'] = str(b04_files[0])
+                if b08_files:
+                    self.tiff_data[date_str]['b08_path'] = str(b08_files[0])
+                
+                self.update_info(f"📊 TIFF trouvé: {date_str}")
+        
+        if self.tiff_data:
+            # Sélectionner la date la plus récente par défaut
+            self.selected_tiff_date = max(self.tiff_data.keys())
+            self.update_info(f"✅ {len(self.tiff_data)} date(s) TIFF chargée(s)")
+        else:
+            self.update_info("ℹ️  Aucun TIFF NDVI trouvé dans data/processed/")
+
     def run_pipeline(self):
         """Lance le pipeline complet de traitement"""
         
@@ -1037,6 +1257,9 @@ class FoliumMapGUI:
             # Recharger les shapefiles
             self.load_existing_shapefiles()
             
+            # Recharger les TIFF
+            self.load_existing_tiffs()
+
             # Régénérer la carte avec les nouveaux shapefiles
             self.create_folium_map()
             
@@ -1194,6 +1417,50 @@ class FoliumMapGUI:
         self.info_text.insert(tk.END, f"{message}\n")
         self.info_text.see(tk.END)
     
+    def load_existing_tiffs(self):
+        """Charge les fichiers TIFF NDVI existants dans data/processed"""
+        processed_dir = Path("data/processed")
+        
+        if not processed_dir.exists():
+            self.update_info("📁 Création du dossier data/processed/")
+            processed_dir.mkdir(parents=True, exist_ok=True)
+            return
+        
+        # Chercher tous les dossiers de dates (format: YYYY-MM-DD)
+        date_folders = [d for d in processed_dir.iterdir() 
+                    if d.is_dir() and len(d.name) == 10 and d.name.count('-') == 2]
+        
+        for date_folder in sorted(date_folders):
+            date_str = date_folder.name
+            
+            # Chercher les fichiers NDVI
+            ndvi_files = list(date_folder.glob('NDVI_*.tif'))
+            
+            if ndvi_files:
+                self.tiff_data[date_str] = {
+                    'ndvi_path': str(ndvi_files[0]),
+                    'b04_path': None,
+                    'b08_path': None
+                }
+                
+                # Chercher aussi B04 et B08 si présents
+                b04_files = list(date_folder.glob('B04_*.tif'))
+                b08_files = list(date_folder.glob('B08_*.tif'))
+                
+                if b04_files:
+                    self.tiff_data[date_str]['b04_path'] = str(b04_files[0])
+                if b08_files:
+                    self.tiff_data[date_str]['b08_path'] = str(b08_files[0])
+                
+                self.update_info(f"📊 TIFF trouvé: {date_str}")
+        
+        if self.tiff_data:
+            # Sélectionner la date la plus récente par défaut
+            self.selected_tiff_date = max(self.tiff_data.keys())
+            self.update_info(f"✅ {len(self.tiff_data)} date(s) TIFF chargée(s)")
+        else:
+            self.update_info("ℹ️  Aucun TIFF NDVI trouvé dans data/processed/")
+
     def __del__(self):
         """Nettoyage lors de la destruction"""
         if self.temp_map_file and os.path.exists(self.temp_map_file):

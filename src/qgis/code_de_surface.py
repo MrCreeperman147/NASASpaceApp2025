@@ -8,6 +8,7 @@ Version adaptée pour le pipeline automatique avec gestion CRS robuste
 
 import os, sys, warnings
 from pathlib import Path
+from datetime import datetime
 
 # Patch PROJ - Version robuste avec détection automatique
 def setup_proj_data():
@@ -78,6 +79,10 @@ DEFAULT_CONFIG = {
     'ADD_TOTAL_FIELD': True,
     'TOTAL_FIELD_NAME': 'TOT_KM2',
     'TOTAL_DECIMALS': 4,
+    
+    # Chemin vers le shapefile de référence
+    'REFERENCE_SHAPEFILE': 'data/model/Magdalene_Contour_Final2.shp',
+    'USE_REFERENCE_FILTER': True,
 }
 
 
@@ -205,6 +210,42 @@ def compute_ndvi(nir, red):
     return ndvi.astype("float32")
 
 
+def save_ndvi_tiff(ndvi, transform, crs, output_path):
+    """
+    Sauvegarde le NDVI en tant que fichier TIFF
+    
+    Args:
+        ndvi: Array numpy du NDVI
+        transform: Transform rasterio
+        crs: CRS rasterio
+        output_path: Chemin de sortie
+    """
+    import rasterio
+    from rasterio.enums import Resampling
+    
+    profile = {
+        'driver': 'GTiff',
+        'dtype': 'float32',
+        'count': 1,
+        'width': ndvi.shape[1],
+        'height': ndvi.shape[0],
+        'transform': transform,
+        'crs': crs,
+        'compress': 'deflate',
+        'tiled': True,
+        'nodata': -9999
+    }
+    
+    # Remplacer les NaN par la valeur nodata
+    ndvi_save = ndvi.copy()
+    ndvi_save[~np.isfinite(ndvi_save)] = -9999
+    
+    with rasterio.open(output_path, 'w', **profile) as dst:
+        dst.write(ndvi_save, 1)
+    
+    print(f"   💾 NDVI TIFF sauvegardé: {output_path.name}")
+
+
 def make_binary_from_ndvi(ndvi, config):
     """Crée un masque binaire à partir du NDVI"""
     # Lissage
@@ -319,6 +360,70 @@ def to_metric_for_area(gdf, target_epsg=32198):
         return gdf.to_crs(epsg=32620)
 
 
+def filter_by_reference_shapefile(gdf, reference_shp_path):
+    """
+    Filtre un GeoDataFrame pour ne garder que les géométries
+    qui intersectent avec un shapefile de référence
+    
+    Args:
+        gdf: GeoDataFrame à filtrer
+        reference_shp_path: Chemin vers le shapefile de référence (zone d'intérêt)
+    
+    Returns:
+        GeoDataFrame filtré
+    """
+    import geopandas as gpd
+    
+    ref_path = Path(reference_shp_path)
+    
+    if not ref_path.exists():
+        print(f"   ⚠️  Shapefile de référence introuvable: {ref_path}")
+        print(f"      Traitement sans filtrage spatial")
+        return gdf
+    
+    print(f"\n🗺️  Filtrage spatial avec zone de référence...")
+    print(f"   Référence: {ref_path.name}")
+    
+    # Charger le shapefile de référence
+    try:
+        ref_gdf = gpd.read_file(ref_path)
+        print(f"   Géométries de référence: {len(ref_gdf)}")
+        print(f"   CRS référence: {ref_gdf.crs}")
+        
+        # Reprojeter si nécessaire
+        if gdf.crs != ref_gdf.crs:
+            print(f"   🔄 Reprojection référence: {ref_gdf.crs} → {gdf.crs}")
+            ref_gdf = ref_gdf.to_crs(gdf.crs)
+        
+        # Créer une union de toutes les géométries de référence
+        ref_union = ref_gdf.geometry.unary_union
+        
+        # Filtrer: garder seulement ce qui intersecte
+        before_count = len(gdf)
+        gdf_filtered = gdf[gdf.geometry.intersects(ref_union)].copy()
+        after_count = len(gdf_filtered)
+        
+        removed = before_count - after_count
+        
+        print(f"   ✅ Filtrage terminé:")
+        print(f"      Polygones avant: {before_count}")
+        print(f"      Polygones après: {after_count}")
+        print(f"      Supprimés: {removed}")
+        
+        if after_count == 0:
+            print(f"   ⚠️  ATTENTION: Aucun polygone ne chevauche la zone de référence!")
+            print(f"      Vérifiez que les CRS sont compatibles.")
+        
+        return gdf_filtered
+        
+    except Exception as e:
+        print(f"   ❌ Erreur lors du filtrage spatial: {e}")
+        print(f"      Traitement sans filtrage")
+        import traceback
+        traceback.print_exc()
+        return gdf
+
+
 def process_ndvi(band_red, band_nir, output_dir, output_name, config=None):
     """
     Fonction principale de traitement NDVI → Shapefile
@@ -331,7 +436,7 @@ def process_ndvi(band_red, band_nir, output_dir, output_name, config=None):
         config: Configuration (utilise DEFAULT_CONFIG si None)
     
     Returns:
-        Path vers le shapefile créé
+        Dict avec 'shapefile', 'ndvi_tiff', 'date'
     """
     if config is None:
         config = DEFAULT_CONFIG.copy()
@@ -367,6 +472,33 @@ def process_ndvi(band_red, band_nir, output_dir, output_name, config=None):
     print(f"\n🔧 Calcul NDVI...")
     ndvi = compute_ndvi(nir, red)
     
+    # Extraire la date depuis band_red pour organiser les fichiers
+    date_str = None
+    try:
+        red_path = Path(band_red)
+        # Chercher la date dans le nom du fichier ou du dossier parent
+        if red_path.parent.name and len(red_path.parent.name) == 10:
+            # Format: YYYY-MM-DD
+            date_str = red_path.parent.name
+        else:
+            # Extraire depuis le nom du fichier
+            parts = red_path.stem.split('_')
+            for part in parts:
+                if len(part) == 10 and part.count('-') == 2:
+                    date_str = part
+                    break
+    except Exception:
+        date_str = datetime.now().strftime('%Y-%m-%d')
+    
+    # Créer le dossier de sortie par date
+    if date_str:
+        output_dir = Path(output_dir) / date_str
+        output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Sauvegarder le NDVI en TIFF
+    ndvi_tiff_path = output_dir / f"NDVI_{date_str}.tif"
+    save_ndvi_tiff(ndvi, tr, crs, ndvi_tiff_path)
+
     # Statistiques NDVI
     valid_ndvi = ndvi[np.isfinite(ndvi)]
     if len(valid_ndvi) > 0:
@@ -419,6 +551,15 @@ def process_ndvi(band_red, band_nir, output_dir, output_name, config=None):
     
     print(f"   Polygones après filtrage (>{config['min_area_m2']}m²): {len(gdf_m)}")
     
+    # Filtrage spatial par zone de référence
+    if config.get('USE_REFERENCE_FILTER', False):
+        ref_shp = config.get('REFERENCE_SHAPEFILE')
+        if ref_shp:
+            gdf_m = filter_by_reference_shapefile(gdf_m, ref_shp)
+            if not gdf_m.empty:
+                gdf_m["area_m2"] = gdf_m.geometry.area
+                gdf_m["area_km2"] = (gdf_m["area_m2"] / 1e6)
+
     # Champ total
     if config.get('ADD_TOTAL_FIELD', True) and not gdf_m.empty:
         total_km2 = float(gdf_m["area_km2"].sum())
@@ -439,7 +580,11 @@ def process_ndvi(band_red, band_nir, output_dir, output_name, config=None):
     print(f"\n✅ Shapefile créé: {out_path}")
     print(f"🌿 Surface totale: {gdf_m['area_km2'].sum():.{config.get('TOTAL_DECIMALS',4)}f} km²")
     
-    return out_path
+    return {
+        'shapefile': out_path,
+        'ndvi_tiff': ndvi_tiff_path,
+        'date': date_str
+    }
 
 
 if __name__ == "__main__":

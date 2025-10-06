@@ -224,37 +224,64 @@ class PipelineProcessor:
         
         print(f"   🔧 Traitement QGIS...")
         
-        # Appeler traitement_qgis.py
         tci_1 = str(tci_files[0])
         tci_2 = str(tci_files[1])
         
         try:
-            # Importer et exécuter traitement_qgis
             sys.path.insert(0, 'src/qgis')
             import traitement_qgis
             
-            # Appeler la fonction de traitement (à adapter selon votre code)
-            mosaic_b04, mosaic_b08 = traitement_qgis.process_tci_pair(tci_1, tci_2)
+            # Extraire la date depuis le nom du fichier TCI
+            # Format: S2X_MSILXX_YYYYMMDDTHHMMSS_...
+            date_str = None
+            try:
+                parts = Path(tci_1).stem.split('_')
+                if len(parts) >= 3:
+                    datetime_str = parts[2]  # YYYYMMDDTHHMMSS
+                    year_part = datetime_str[:4]
+                    month = datetime_str[4:6]
+                    day = datetime_str[6:8]
+                    date_str = f"{year_part}-{month}-{day}"
+            except Exception:
+                date_str = f"{year}-01-01"  # Fallback
+            
+            # Créer le dossier de sortie par date
+            output_base = Path('data/processed')
+            
+            # Passer le dossier de base pour l'organisation par date
+            mosaic_b04, mosaic_b08 = traitement_qgis.process_tci_pair(
+                tci_1, tci_2, 
+                output_base_dir=output_base
+            )
             
             print(f"      ✅ Mosaïques créées")
             print(f"         B04: {mosaic_b04}")
             print(f"         B08: {mosaic_b08}")
             
-            # Appeler code_de_surface.py
             print(f"   🔧 Calcul de surface...")
             
             import code_de_surface
             
-            shapefile_path = code_de_surface.process_ndvi(
+            result = code_de_surface.process_ndvi(
                 band_red=mosaic_b04,
                 band_nir=mosaic_b08,
-                output_dir=self.output_dir,
+                output_dir=Path('output/shapefiles'),
                 output_name=f"surface_{year}.shp"
             )
             
-            print(f"      ✅ Shapefile créé: {shapefile_path}")
+            print(f"      ✅ Shapefile créé: {result['shapefile']}")
+            print(f"      ✅ NDVI TIFF créé: {result['ndvi_tiff']}")
+            print(f"      📅 Date: {result['date']}")
             
-            return shapefile_path
+            return {
+                'year': year,
+                'date': result['date'],
+                'shapefile': result['shapefile'],
+                'ndvi_tiff': result['ndvi_tiff'],
+                'b04_tiff': str(mosaic_b04),
+                'b08_tiff': str(mosaic_b08),
+                'status': 'success'
+            }
             
         except Exception as e:
             print(f"      ❌ Erreur: {e}")

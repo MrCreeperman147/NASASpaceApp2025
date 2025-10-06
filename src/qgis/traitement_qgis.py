@@ -9,38 +9,17 @@ N'utilise QUE Python/NumPy/Rasterio - AUCUN exécutable GDAL requis
 import os, sys, warnings
 from pathlib import Path
 import numpy as np
+from datetime import datetime
 
 # ====== Configuration PROJ ======
-def setup_proj_data():
-    """Configure PROJ_DATA en cherchant proj.db"""
-    if "PROJ_DATA" in os.environ and Path(os.environ["PROJ_DATA"]).exists():
-        return
-    
-    # Chercher proj.db récursivement
-    for db_path in Path(sys.prefix).rglob("proj.db"):
-        if db_path.is_file():
-            os.environ["PROJ_DATA"] = str(db_path.parent)
-            break
-    else:
-        candidates = [
-            Path(sys.prefix) / "share" / "proj",
-            Path(sys.prefix) / "Library" / "share" / "proj",
-            Path(sys.prefix) / "Lib" / "site-packages" / "fiona" / "proj_data",
-        ]
-        for candidate in candidates:
-            if (candidate / "proj.db").exists():
-                os.environ["PROJ_DATA"] = str(candidate)
-                break
-        else:
-            os.environ.setdefault("PROJ_DATA", os.path.join(sys.prefix, "share", "proj"))
-    
-    try:
-        from pyproj import datadir
-        datadir.set_data_dir(os.environ["PROJ_DATA"])
-    except Exception:
-        pass
+PREFIX = sys.prefix
+os.environ.setdefault("PROJ_DATA", os.path.join(PREFIX, "share", "proj"))
 
-setup_proj_data()
+try:
+    from pyproj import datadir
+    datadir.set_data_dir(os.environ["PROJ_DATA"])
+except Exception:
+    pass
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -260,18 +239,22 @@ def convert_jp2_to_tif_if_needed(jp2_path: Path, output_dir: Path = None) -> Pat
         )
 
 
-def process_tci_pair(tci_1: str, tci_2: str) -> tuple[Path, Path]:
+def process_tci_pair(tci_1: str, tci_2: str, output_base_dir: Path = None) -> tuple[Path, Path]:
     """
     Traite une paire de fichiers TCI pour créer des mosaïques B04 et B08
-    VERSION PURE PYTHON - Aucun exécutable GDAL requis
+    Les fichiers sont organisés par date dans data/processed/YYYY-MM-DD/
     
     Args:
         tci_1: Chemin vers le premier fichier TCI
         tci_2: Chemin vers le deuxième fichier TCI
+        output_base_dir: Dossier de base (défaut: data/processed)
     
     Returns:
         Tuple (chemin_b04, chemin_b08)
     """
+    if output_base_dir is None:
+        output_base_dir = Path("data/processed")
+    
     print("\n" + "="*80)
     print("TRAITEMENT PAIRE TCI → MOSAÏQUES B04/B08 (Pure Python)")
     print("="*80)
@@ -281,6 +264,27 @@ def process_tci_pair(tci_1: str, tci_2: str) -> tuple[Path, Path]:
     
     print(f"\n📍 TCI 1: {tci_1_path.name}")
     print(f"📍 TCI 2: {tci_2_path.name}")
+    
+    # Extraire la date depuis le nom du fichier
+    # Format: S2X_MSILXX_YYYYMMDDTHHMMSS_...
+    date_str = None
+    try:
+        parts = tci_1_path.stem.split('_')
+        if len(parts) >= 3:
+            datetime_str = parts[2]  # YYYYMMDDTHHMMSS
+            # Extraire YYYY-MM-DD
+            year = datetime_str[:4]
+            month = datetime_str[4:6]
+            day = datetime_str[6:8]
+            date_str = f"{year}-{month}-{day}"
+    except Exception:
+        date_str = datetime.now().strftime('%Y-%m-%d')
+    
+    # Créer le dossier de sortie par date
+    date_dir = output_base_dir / date_str
+    date_dir.mkdir(parents=True, exist_ok=True)
+    
+    print(f"\n📂 Dossier de sortie: {date_dir}")
     
     # Trouver les bandes B04 et B08 pour chaque TCI
     print(f"\n🔍 Recherche des bandes...")
@@ -307,11 +311,9 @@ def process_tci_pair(tci_1: str, tci_2: str) -> tuple[Path, Path]:
     b8_1 = convert_jp2_to_tif_if_needed(b8_1)
     b8_2 = convert_jp2_to_tif_if_needed(b8_2)
     
-    # Créer les noms de sortie avec timestamp
-    timestamp = tci_1_path.stem.split('_')[2] if '_' in tci_1_path.stem else "mosaic"
-    
-    b04_tif = OUT_DIR / f"Mosaic_B04_{timestamp}.tiff"
-    b08_tif = OUT_DIR / f"Mosaic_B08_{timestamp}.tiff"
+    # Créer les noms de sortie avec leur date
+    b04_tif = date_dir / f"B04_{date_str}.tif"
+    b08_tif = date_dir / f"B08_{date_str}.tif"
     
     # Créer les mosaïques avec rasterio
     print(f"\n🔧 Création des mosaïques (rasterio.merge)...")
