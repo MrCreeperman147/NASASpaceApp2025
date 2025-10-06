@@ -16,12 +16,12 @@ __pycache__/
 #data/raw/*
 *.tif
 *.tiff
-*.shp
-*.shx
-*.dbf
-*.prj
-*.cpg
-*.qmd
+output/shapefiles/*.shp
+output/shapefiles/*.shx
+output/shapefiles/*.dbf
+output/shapefiles/*.prj
+output/shapefiles/*.cpg
+output/shapefiles/*.qmd
 
 # IDE
 .vscode/
